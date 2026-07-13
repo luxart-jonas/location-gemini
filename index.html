@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.1.0</title>
+<title>Fundfakten Gemini v0.1.2</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.1.0</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.1.2</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -189,7 +189,7 @@
 // Single provider: Gemini handles text, vision (photo ID), and web grounding
 // (via the built-in google_search tool) all with one model — simpler than the
 // Groq+Claude dual-provider setup in the main Fundfakten app.
-const GEMINI_MODEL = "gemini-2.5-flash"; // free-tier standard as of mid-2026; try "gemini-3.5-flash" if your account has it
+const GEMINI_MODEL = "gemini-2.5-flash-lite"; // gemini-2.5-flash is closed to new accounts, gemini-3.5-flash had free-tier quota bug reports — flash-lite avoided both issues
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 let state = {
