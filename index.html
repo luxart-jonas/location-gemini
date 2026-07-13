@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.3.1</title>
+<title>Fundfakten Gemini v0.3.2</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.1</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.2</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -425,18 +425,28 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ];
 
+async function fetchWithTimeout(url, options, timeoutMs){
+  const controller = new AbortController();
+  const timer = setTimeout(()=> controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, { ...options, signal: controller.signal });
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 async function overpassFetch(query){
   let lastErr;
   for(const endpoint of OVERPASS_ENDPOINTS){
     try{
-      const res = await fetch(endpoint, {
+      const res = await fetchWithTimeout(endpoint, {
         method:'POST', body:'data=' + encodeURIComponent(query),
         headers:{'Content-Type':'application/x-www-form-urlencoded'}
-      });
+      }, 8000); // 8s — a hanging/overloaded server must not block the whole flow
       if(res.ok) return res.json();
       lastErr = new Error('Overpass ' + res.status + ' (' + endpoint + ')');
     }catch(e){
-      lastErr = e;
+      lastErr = e.name === 'AbortError' ? new Error('Zeitüberschreitung (' + endpoint + ')') : e;
     }
   }
   throw lastErr;
@@ -512,6 +522,7 @@ async function collectNearbyCandidates(){
   const {lat, lon} = state;
   const seen = new Map();
   for(const radius of [150, 400, 900]){
+    setStatus(`Suche nach Interessantem in der Nähe (Radius ${radius}m)…`);
     const data = await overpassCandidatesQuery(radius);
     for(const el of (data.elements || [])){
       const tags = el.tags || {};
@@ -531,7 +542,7 @@ async function collectNearbyCandidates(){
 
 async function reverseGeocode(){
   const {lat, lon} = state;
-  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+  const res = await fetchWithTimeout(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`, {}, 8000);
   if(!res.ok) throw new Error('Nominatim ' + res.status);
   return res.json();
 }
