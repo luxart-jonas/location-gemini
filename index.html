@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.3.0</title>
+<title>Fundfakten Gemini v0.3.1</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.0</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.1</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -749,12 +749,16 @@ haben oder es weglassen — nicht raten, auch nicht bei ähnlich klingenden Orte
 ${lengthGuidance}
 Ein Fact/Absatz pro Absatz, aber bei längerer Ausgabe dürfen einzelne Absätze auch mal 2-3 Sätze haben statt strikt einer Zeile.`;
   }
-  return base + `\n\nKRITISCH — keine Quelle vorhanden: Für diesen Ort wurde KEINE Wikipedia-, Wikidata- oder GND-Quelle
-gefunden. Erfinde KEINE spezifischen historischen Fakten (keine Jahreszahlen, Namen, Ereignisse, Anekdoten) über diesen
-konkreten Ort — das ist die Hauptursache für frühere Fantasie-Antworten und darf nicht wieder passieren. Schreibe
-stattdessen ehrlich und knapp (2-3 Sätze), dass zu diesem genauen Ort keine gesicherten Informationen vorliegen. Du
-darfst höchstens ganz allgemeine, unstrittige Kontext-Infos zur Region/Gegend nennen, aber klar als "allgemein"
-kennzeichnen und nicht als Fun Fact über den Ort selbst verkaufen.`;
+  return base + `\n\nKEINE WIKIPEDIA/WIKIDATA/GND-QUELLE VORHANDEN — GENAU DESHALB IST DIE WEBSUCHE HIER PFLICHT, NICHT
+OPTIONAL: Für diesen Ort/diese Person wurde nichts in den enzyklopädischen Quellen gefunden. Das heißt NICHT, dass es
+nichts zu finden gibt — Statuen, Denkmäler, lokale Persönlichkeiten haben oft keinen eigenen Wikipedia-Artikel, obwohl
+im Web (Zeitungsartikel, lokale Websites, Tourismus-Seiten, Vereinsseiten, Nachrufe, Interviews) reichlich Information
+existiert. Führe DESHALB mindestens zwei bis drei gezielte Google-Suchen durch, bevor du aufgibst — probiere dabei
+verschiedene Suchbegriffe (exakter Name, Name + Ort/Region, Name + "Statue"/"Denkmal"/"Biografie" je nach Kontext).
+Erst wenn auch mehrere Suchversuche wirklich nichts Konkretes liefern, schreibe ehrlich und knapp (2-3 Sätze), dass zu
+diesem genauen Ort keine gesicherten Informationen vorliegen — aber das ist der letzte Ausweg, nicht die erste Reaktion.
+Was du per Suche findest, muss echt sein (kein Erfinden von Jahreszahlen, Namen, Ereignissen) — aber probiere die Suche
+aktiv aus, bevor du das Fehlen von Wikipedia mit dem Fehlen von Information verwechselst.`;
 }
 
 function buildSourceUserMessage(title, contextText, sources){
