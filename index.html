@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.1.4</title>
+<title>Fundfakten Gemini v0.2.0</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.1.4</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.2.0</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -719,14 +719,14 @@ Namen von Gebäuden/Orten sind oft nicht eindeutig — dasselbe Wort kann in meh
 Gebäude in Portugal und Brasilien). Nutze immer die mitgelieferte Stadt/Land-Angabe, um den richtigen Ort zu identifizieren,
 und beziehe dich NIE auf einen gleichnamigen Ort woanders.
 
-Du hast außerdem Zugriff auf ein Websuche-Tool (web_search). Wikipedia/Wikidata/GND decken nur enzyklopädisch
-relevante Orte/Gebäude ab — für sehr lokale Dinge (ein Restaurant, ein Laden, eine Person mit einer ungewöhnlichen
-Lebensgeschichte, die vor Ort bekannt ist, ein lokales Gerücht/Ereignis) gibt es dort naturgemäß nichts. Nutze die
-Websuche gezielt, wenn der genannte Ort/Name nach einem Geschäft, Restaurant, einer Person oder einem sehr lokalen
-Phänomen klingt und die mitgelieferten Quellen dazu nichts hergeben. Erwähne den Suchvorgang selbst NICHT im Text
-("ich habe gesucht und gefunden..."), liefere nur das Endergebnis im gewohnten Fun-Fact-Stil. Auch bei Websuche gilt:
-nichts erfinden, was die Suchergebnisse nicht hergeben — wenn auch die Websuche nichts Konkretes findet, sag das ehrlich
-statt zu spekulieren.`;
+Du hast außerdem Zugriff auf ein Websuche-Tool (google_search). Nutze es aktiv — nicht nur als Notlösung, wenn die
+mitgelieferten Quellen leer sind, sondern IMMER zusätzlich, um über die reine Enzyklopädie-Fassung hinauszugehen:
+aktuelle Presseartikel, lokale Blogs, Bewertungsportale, Interviews, ungewöhnliche Geschichten, Kuriositäten, lokale
+Reputation. Führe dafür mindestens eine gezielte Suche durch, auch wenn dir schon Wikipedia/Wikidata/GND-Text vorliegt
+— die gelieferten Quellen sind der verlässliche Ausgangspunkt, nicht die Obergrenze dessen, was du einbauen darfst.
+Erwähne den Suchvorgang selbst NICHT im Text ("ich habe gesucht und gefunden..."), liefere nur das Endergebnis im
+gewohnten Fun-Fact-Stil. Alles was du per Suche ergänzt, muss durch echte Ergebnisse gedeckt sein, nicht aus eigenem
+Vorwissen erfunden — wenn auch die Websuche nichts Konkretes findet, sag das ehrlich statt zu spekulieren.`;
 
   if(sources && (sources.wiki || sources.wikidata || sources.gnd)){
     const richness = (sources.wiki ? 1:0) + (sources.wikidata ? 1:0) + (sources.gnd ? 1:0);
@@ -734,15 +734,17 @@ statt zu spekulieren.`;
       ? `Dir liegt mehr als eine Quelle mit brauchbarem Material vor. Schöpf das aus: ziel auf ca. 2-3 Minuten Lesezeit
 (ungefähr 400-600 Wörter, mehrere Absätze), wenn das Material das wirklich hergibt — aber fülle NICHT künstlich mit
 Wiederholungen oder Allgemeinplätzen auf, wenn die Quellen dünner sind als das. Qualität und Substanz vor Zielwortzahl.`
-      : `Nur eine Quelle mit Material vorhanden — bleib bei 3-5 prägnanten Fakten, keine künstliche Streckung.`;
+      : `Nur eine Quelle mit Material vorhanden — nutze die Websuche aktiv, um das auf 3-5 prägnante Fakten mit echter
+Substanz auszubauen, statt bei einer dünnen Quelle stehenzubleiben.`;
 
-    return base + `\n\nKRITISCH — Quellenbindung: Dir liegen unten ein oder mehrere echte Quellen zu genau diesem Ort vor
-(Wikipedia-Volltext, Wikidata-Strukturdaten und/oder GND-Normdaten). Nutze AUSSCHLIESSLICH diese Texte als Faktenquelle
-(in eigenen Worten umformuliert, nicht wörtlich zitiert) — durchsuche den Wikipedia-Text ruhig ganz, nicht nur den ersten
-Absatz, gerade Geschichts-Abschnitte liefern oft die interessantesten Details. Wikidata/GND-Angaben sind gute Anker für
-exakte Daten/Zahlen, die du in die Fließtext-Fakten einbauen kannst. Ergänze höchstens sehr allgemeines, unstrittiges
-Kontextwissen (z.B. grobe Epochen-Einordnung), aber KEINE eigenen spezifischen Details (Jahreszahlen, Namen, Ereignisse),
-die nicht in den Quellen stehen — auch wenn du glaubst, etwas über einen ähnlich klingenden Ort zu wissen.
+    return base + `\n\nQUELLENBASIS: Dir liegen unten ein oder mehrere echte Quellen zu genau diesem Ort vor
+(Wikipedia-Volltext, Wikidata-Strukturdaten und/oder GND-Normdaten). Das ist dein verlässlicher Ausgangspunkt (in eigenen
+Worten umformuliert, nicht wörtlich zitiert) — durchsuche den Wikipedia-Text ruhig ganz, nicht nur den ersten Absatz,
+gerade Geschichts-Abschnitte liefern oft die interessantesten Details. Wikidata/GND-Angaben sind gute Anker für exakte
+Daten/Zahlen. ERGÄNZE das aktiv per Websuche (siehe oben) um Details, die in diesen Quellen fehlen — Wikipedia ist oft
+dürr bei genau den überraschenden, einprägsamen Details, nach denen hier gesucht wird. Bei allem, was du ergänzt oder
+über die Quellen hinaus behauptest (auch "allgemeines Kontextwissen"), musst du entweder eine Quelle/Suchergebnis dafür
+haben oder es weglassen — nicht raten, auch nicht bei ähnlich klingenden Orten anderswo.
 ${lengthGuidance}
 Ein Fact/Absatz pro Absatz, aber bei längerer Ausgabe dürfen einzelne Absätze auch mal 2-3 Sätze haben statt strikt einer Zeile.`;
   }
