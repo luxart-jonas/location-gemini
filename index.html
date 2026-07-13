@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.3.2</title>
+<title>Fundfakten Gemini v0.3.3</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.2</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.3</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -423,6 +423,8 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
 async function fetchWithTimeout(url, options, timeoutMs){
@@ -799,16 +801,25 @@ function sourceBadge(sources, usedWebSearch){
 
 async function showNearbyChoices(){
   ensureApiKey(async ()=>{
+    let candidates = [];
+    let overpassFailed = false;
     try{
       setStatus('Suche nach Interessantem in der Nähe…');
-      const candidates = await collectNearbyCandidates();
+      candidates = await collectNearbyCandidates();
+    }catch(err){
+      overpassFailed = true; // all Overpass mirrors unreachable — fall through to address-based facts instead of a dead end
+    }
+
+    try{
       const locality = localityString();
       state.nearbyList = candidates;
       state.locality = locality;
 
       if(!candidates.length){
-        // Nothing named nearby at all — skip the list, go straight to the address fallback.
-        setStatus('Nichts Markantes in der Nähe gefunden — ermittle Adresse…');
+        // Nothing named nearby at all (or Overpass itself unreachable) — skip the list, go straight to the address fallback.
+        setStatus(overpassFailed
+          ? 'Kartendaten gerade nicht erreichbar — ermittle Adresse als Alternative…'
+          : 'Nichts Markantes in der Nähe gefunden — ermittle Adresse…');
         const addr = state.addressLabel || (await reverseGeocode()).display_name || 'unbekannter Ort';
         const contextText = `Der Nutzer steht an folgender Adresse (kein spezifisches Baudenkmal in OSM gefunden): ${addr}. Koordinaten: ${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}. Gib Fun Facts zu dieser Gegend/Straße/diesem Viertel, falls möglich, sonst zur nächstgrößeren Stadt. Beziehe dich nur auf diesen konkreten Ort, nicht auf gleichnamige Orte anderswo.`;
         const title = state.addressDetails?.city || state.addressDetails?.town || state.addressDetails?.village || 'In der Nähe';
