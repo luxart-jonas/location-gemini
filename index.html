@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Fundfakten Gemini v0.1.0</title>
+<style>
+  :root{
+    --bg:#0a0a0a;
+    --panel:#151513;
+    --panel2:#1c1c19;
+    --gold:#d4af37;
+    --gold2:#c8a96e;
+    --ink:#ece7dc;
+    --muted:#948d7c;
+    --line:#2a2924;
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:auto;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+    min-height:100vh;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  header{
+    padding:18px 20px 12px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line);
+  }
+  header h1{
+    font-family:var(--serif); font-size:20px; font-weight:600; margin:0; letter-spacing:.3px;
+    color:var(--gold);
+  }
+  header .sub{font-size:11px; color:var(--muted); margin-top:2px; font-family:var(--sans);}
+  .gear{background:none;border:1px solid var(--line);color:var(--muted);border-radius:50%;
+    width:34px;height:34px;font-size:16px;cursor:pointer;flex:none;}
+  main{
+    padding:16px; display:flex; flex-direction:column; gap:14px;
+  }
+
+  /* status / loading */
+  .status{
+    display:flex; align-items:center; gap:12px; padding:16px; color:var(--muted);
+    font-size:14px;
+  }
+  .spinner{
+    width:18px;height:18px;border-radius:50%;border:2px solid var(--line);
+    border-top-color:var(--gold); animation:spin 0.9s linear infinite; flex:none;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* the plaque card */
+  .plaque{
+    background:linear-gradient(180deg, var(--panel), var(--panel2));
+    border:1px solid var(--line); border-radius:6px; padding:20px 20px 18px;
+    position:relative; overflow:hidden;
+  }
+  .plaque::before{
+    content:""; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .plaque .eyebrow{
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold2);
+    margin-bottom:6px; font-weight:600;
+  }
+  .plaque h2{
+    font-family:var(--serif); font-size:22px; margin:0 0 4px; color:var(--ink); line-height:1.25;
+  }
+  .plaque .meta{font-size:12px; color:var(--muted); margin-bottom:14px;}
+  .plaque .facts{font-size:15px; line-height:1.65; color:#ddd6c6;}
+  .plaque .facts p{margin:0 0 10px;}
+  .plaque .facts p:last-child{margin-bottom:0;}
+  .plaque .facts strong{color:var(--gold2);}
+
+  /* chat */
+  .chat{display:flex; flex-direction:column; gap:10px;}
+  .msg{max-width:88%; padding:10px 13px; border-radius:10px; font-size:14px; line-height:1.5;}
+  .msg.user{align-self:flex-end; background:#26241c; border:1px solid var(--line); color:var(--ink);}
+  .msg.assistant{align-self:flex-start; background:var(--panel); border:1px solid var(--line); color:#ddd6c6;}
+
+  .empty{
+    text-align:center; color:var(--muted); font-size:13px; padding:40px 20px; line-height:1.6;
+  }
+  .empty b{color:var(--gold2); display:block; font-family:var(--serif); font-size:17px; margin-bottom:6px;}
+
+  footer{
+    border-top:1px solid var(--line); padding:10px 12px; display:flex; gap:8px; align-items:flex-end;
+    background:var(--bg);
+  }
+  .icon-btn{
+    background:var(--panel); border:1px solid var(--line); color:var(--gold2);
+    width:42px; height:42px; border-radius:10px; font-size:18px; flex:none; cursor:pointer;
+  }
+  .icon-btn:active{background:var(--panel2);}
+  textarea#askInput{
+    flex:1; resize:none; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    border-radius:10px; padding:11px 12px; font-size:14px; font-family:var(--sans); max-height:100px;
+  }
+  textarea#askInput:focus{outline:none; border-color:var(--gold2);}
+  #sendBtn{
+    background:var(--gold); border:none; color:#141311; width:42px; height:42px; border-radius:10px;
+    font-size:16px; flex:none; cursor:pointer; font-weight:700;
+  }
+  #sendBtn:disabled{opacity:.4;}
+
+  /* modal (settings / manual search) */
+  .overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end;
+    justify-content:center; z-index:50;
+  }
+  .overlay.show{display:flex;}
+  .sheet{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px 14px 0 0;
+    width:100%; max-width:480px; padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+  }
+  .sheet h3{font-family:var(--serif); margin:0 0 12px; color:var(--gold);}
+  .sheet input[type=text], .sheet input[type=password]{
+    width:100%; background:#0f0f0d; border:1px solid var(--line); color:var(--ink);
+    padding:11px 12px; border-radius:8px; font-size:14px; margin-bottom:10px;
+  }
+  .sheet .row{display:flex; gap:8px;}
+  .sheet button.primary{
+    background:var(--gold); border:none; color:#141311; padding:11px 16px; border-radius:8px;
+    font-weight:700; cursor:pointer; flex:1;
+  }
+  .sheet button.secondary{
+    background:none; border:1px solid var(--line); color:var(--muted); padding:11px 16px;
+    border-radius:8px; cursor:pointer;
+  }
+  .hint{font-size:11px; color:var(--muted); margin-top:-4px; margin-bottom:12px; line-height:1.5;}
+  #fileInput{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.1.0</span></h1>
+    <div class="sub" id="subline">Wird geladen…</div>
+  </div>
+  <button class="gear" id="settingsBtn">⚙</button>
+</header>
+
+<main id="main">
+  <div class="status" id="statusBox">
+    <div class="spinner"></div>
+    <span id="statusText">Standort wird ermittelt…</span>
+  </div>
+</main>
+
+<footer>
+  <button class="icon-btn" id="photoBtn" title="Foto">📷</button>
+  <button class="icon-btn" id="searchBtn" title="Manuell suchen">🔍</button>
+  <textarea id="askInput" rows="1" placeholder="Frag nach mehr…" disabled></textarea>
+  <button id="sendBtn" disabled>➤</button>
+</footer>
+
+<input type="file" id="fileInput" accept="image/*" capture="environment">
+
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <h3>Gemini API-Key</h3>
+    <div class="hint">Wird nur lokal auf diesem Gerät gespeichert (localStorage). Key von aistudio.google.com.</div>
+    <input type="password" id="geminiKeyInput" placeholder="AIza...">
+    <div class="row">
+      <button class="secondary" id="settingsCancel">Abbrechen</button>
+      <button class="primary" id="settingsSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual search sheet -->
+<div class="overlay" id="searchOverlay">
+  <div class="sheet">
+    <h3>Ort manuell eingeben</h3>
+    <input type="text" id="manualInput" placeholder="z. B. Kölner Dom, Burg Drachenfels...">
+    <div class="row">
+      <button class="secondary" id="searchCancel">Abbrechen</button>
+      <button class="primary" id="searchGo">Fakten holen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Single provider: Gemini handles text, vision (photo ID), and web grounding
+// (via the built-in google_search tool) all with one model — simpler than the
+// Groq+Claude dual-provider setup in the main Fundfakten app.
+const GEMINI_MODEL = "gemini-2.5-flash"; // free-tier standard as of mid-2026; try "gemini-3.5-flash" if your account has it
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+let state = {
+  apiKey: localStorage.getItem('gemini_api_key') || '',
+  lat: null, lon: null,
+  context: null,        // description of current place, used for chat continuation
+  systemPrompt: '',      // system instruction for the current topic's conversation
+  messages: [],          // {role:'user'|'model', parts:[{text}]} for ongoing chat (Gemini's role naming)
+  displayLog: [],         // {role,text} of real follow-up Q&A shown in the chat UI (excludes internal context message)
+  nearbyList: null,       // candidates from the last GPS lookup, so "back to list" doesn't re-query
+  locality: null,
+  currentTopic: null,     // name of the topic currently open, used to keep topicCache in sync
+  topicCache: {},         // name -> {context, systemPrompt, apiMessages, displayLog, badge, sourceUrl, citations, factsText, ts}
+};
+
+// ---------- Persistent cache (7-day TTL) ----------
+// This is the real cost-saver: clicking a topic you (or a past session) already
+// fetched within the last 7 days costs zero API tokens — served straight from
+// localStorage instead of calling Gemini again.
+const CACHE_KEY = 'fundfakten_gemini_topic_cache_v1';
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function loadPersistedCache(){
+  try{
+    const raw = localStorage.getItem(CACHE_KEY);
+    if(!raw) return {};
+    const obj = JSON.parse(raw);
+    const now = Date.now();
+    const pruned = {};
+    for(const [k,v] of Object.entries(obj)){
+      if(v && v.ts && (now - v.ts) < CACHE_TTL_MS) pruned[k] = v;
+    }
+    return pruned;
+  }catch(e){ return {}; }
+}
+
+function savePersistedCache(){
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify(state.topicCache)); }catch(e){ /* storage full or unavailable, non-fatal */ }
+}
+
+function cacheTopic(name, data){
+  state.topicCache[name] = { ...data, ts: Date.now() };
+  savePersistedCache();
+}
+
+state.topicCache = loadPersistedCache();
+
+// ---------- Gemini call helper ----------
+// One function handles everything: text, vision (inline image), and Google Search
+// grounding via the built-in tool. `contents` follows Gemini's format: an array of
+// {role:'user'|'model', parts:[{text}] or [{text},{inline_data}]}.
+async function callGemini(system, contents, {maxTokens=1800, useSearch=true} = {}){
+  const body = {
+    contents,
+    generationConfig: { maxOutputTokens: maxTokens }
+  };
+  if(system) body.system_instruction = { parts:[{ text: system }] };
+  if(useSearch) body.tools = [{ google_search: {} }];
+
+  const res = await fetch(GEMINI_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-goog-api-key': state.apiKey },
+    body: JSON.stringify(body)
+  });
+  if(res.status === 429){
+    const err = new Error('Google-Tageslimit erreicht (kostenloses Kontingent aufgebraucht). Bitte später erneut versuchen.');
+    err.isRateLimit = true;
+    throw err;
+  }
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.error?.message || 'Gemini-Fehler');
+  const candidate = data.candidates?.[0];
+  const text = (candidate?.content?.parts || []).map(p => p.text || '').join('');
+  const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
+  const citations = groundingChunks
+    .filter(c => c.web?.uri)
+    .map(c => ({ url: c.web.uri, title: c.web.title || c.web.uri }));
+  const usedSearch = citations.length > 0 || !!candidate?.groundingMetadata?.webSearchQueries?.length;
+  return { text, citations, usedSearch };
+}
+
+
+const $ = id => document.getElementById(id);
+const main = $('main'), subline = $('subline');
+const askInput = $('askInput'), sendBtn = $('sendBtn');
+
+// IMPORTANT: main.innerHTML gets fully replaced by renderPlaque()/renderLocationCheck().
+// setStatus/hideStatus must never cache references to nodes inside #main from a
+// previous render — those become detached and invisible. Always rebuild fresh.
+function setStatus(text, spinning=true){
+  main.innerHTML = `<div class="status" id="statusBox">
+    <div class="spinner" style="display:${spinning ? 'block' : 'none'}"></div>
+    <span id="statusText">${text}</span>
+  </div>`;
+}
+function hideStatus(){ /* renderPlaque/renderLocationCheck overwrite main directly, nothing to do */ }
+
+function ensureApiKey(cb){
+  if(state.apiKey){ cb(); return; }
+  openSettings();
+  setStatus('Bitte zuerst Gemini API-Key eintragen (⚙ oben rechts).', false);
+}
+
+// ---------- Settings sheet ----------
+function openSettings(){
+  $('geminiKeyInput').value = state.apiKey;
+  $('settingsOverlay').classList.add('show');
+}
+$('settingsBtn').onclick = openSettings;
+$('settingsCancel').onclick = ()=> $('settingsOverlay').classList.remove('show');
+$('settingsSave').onclick = ()=>{
+  const k = $('geminiKeyInput').value.trim();
+  state.apiKey = k;
+  localStorage.setItem('gemini_api_key', k);
+  $('settingsOverlay').classList.remove('show');
+  if(k && !state.context) init();
+};
+
+
+// ---------- Manual search sheet ----------
+$('searchBtn').onclick = ()=>{ $('manualInput').value=''; $('searchOverlay').classList.add('show'); $('manualInput').focus(); };
+$('searchCancel').onclick = ()=> $('searchOverlay').classList.remove('show');
+$('searchGo').onclick = ()=>{
+  const q = $('manualInput').value.trim();
+  if(!q) return;
+  $('searchOverlay').classList.remove('show');
+  ensureApiKey(()=> loadFactsForQuery(q));
+};
+
+// ---------- Photo ----------
+$('photoBtn').onclick = ()=> $('fileInput').click();
+$('fileInput').onchange = (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  ensureApiKey(()=> loadFactsFromPhoto(file));
+  e.target.value = '';
+};
+
+// ---------- Init: geolocation -> Overpass -> Claude ----------
+function init(){
+  if(!navigator.geolocation){
+    setStatus('Geolocation wird von diesem Browser nicht unterstützt. Nutze Foto oder manuelle Eingabe.', false);
+    return;
+  }
+  setStatus('Standort wird ermittelt…');
+
+  let settled = false;
+  const hardTimeout = setTimeout(()=>{
+    if(settled) return;
+    settled = true;
+    setStatus('Standortermittlung dauert zu lange oder hängt. Nutze Foto oder manuelle Eingabe.', false);
+  }, 15000);
+
+  if(navigator.permissions && navigator.permissions.query){
+    navigator.permissions.query({name:'geolocation'}).then(p=>{
+      if(p.state === 'denied'){
+        settled = true; clearTimeout(hardTimeout);
+        setStatus('Standortzugriff ist für diese Seite blockiert (Browser-Einstellung). Bitte in den Chrome-Einstellungen unter Website-Berechtigungen freigeben, oder Foto/manuelle Eingabe nutzen.', false);
+      }
+    }).catch(()=>{});
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      if(settled) return;
+      settled = true; clearTimeout(hardTimeout);
+      state.lat = pos.coords.latitude;
+      state.lon = pos.coords.longitude;
+      const acc = Math.round(pos.coords.accuracy || 0);
+      confirmLocation(acc);
+    },
+    err=>{
+      if(settled) return;
+      settled = true; clearTimeout(hardTimeout);
+      const hint = err.code === 1
+        ? ' Zugriff wurde verweigert — prüf die Website-Berechtigungen in Chrome.'
+        : '';
+      setStatus('Standort nicht verfügbar (' + err.message + ').' + hint + ' Nutze Foto oder manuelle Eingabe.', false);
+    },
+    { enableHighAccuracy:true, timeout:14000, maximumAge:0 }
+  );
+}
+
+async function confirmLocation(acc){
+  subline.textContent = `${state.lat.toFixed(5)}, ${state.lon.toFixed(5)} (±${acc}m)`;
+  setStatus('Standort gefunden (±' + acc + 'm) — prüfe Adresse…');
+  let label = null;
+  try{
+    const geo = await reverseGeocode();
+    label = geo.display_name || null;
+    state.addressLabel = label;
+    state.addressDetails = geo.address || null;
+  }catch(e){ /* ignore, we can still proceed on coords alone */ }
+
+  // Always show the confirmation screen. WiFi/IP-based geolocation on laptops
+  // can report a deceptively small accuracy value while still being hundreds
+  // or thousands of km off (stale AP database entries), so accuracy alone
+  // can't be trusted as a signal to skip confirmation.
+  renderLocationCheck(label, acc);
+}
+
+function renderLocationCheck(label, acc){
+  hideStatus();
+  stopSpeech();
+  main.innerHTML = `
+    <div class="plaque">
+      <div class="eyebrow">Standort prüfen</div>
+      <h2>Ist das richtig?</h2>
+      <div class="meta">Genauigkeit nur ±${acc}m — auf Laptops ohne GPS (WLAN-Ortung) manchmal stark daneben.</div>
+      <div class="facts"><p>${label ? label : 'Koordinaten: ' + state.lat.toFixed(5) + ', ' + state.lon.toFixed(5)}</p></div>
+      <div class="row" style="display:flex;gap:8px;margin-top:14px;">
+        <button class="secondary" id="locWrong" style="flex:1;background:none;border:1px solid var(--line);color:var(--muted);padding:11px 16px;border-radius:8px;cursor:pointer;">Falsch — manuell eingeben</button>
+        <button class="primary" id="locOk" style="flex:1;background:var(--gold);border:none;color:#141311;padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;">Passt, weiter</button>
+      </div>
+    </div>
+  `;
+  $('locOk').onclick = ()=> showNearbyChoices();
+  $('locWrong').onclick = ()=>{ $('manualInput').value=''; $('searchOverlay').classList.add('show'); $('manualInput').focus(); };
+}
+
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+async function overpassCandidatesQuery(radius){
+  const {lat, lon} = state;
+  const q = `[out:json][timeout:20];(
+    nwr(around:${radius},${lat},${lon})[historic];
+    nwr(around:${radius},${lat},${lon})[tourism~"attraction|museum|artwork|viewpoint|gallery"];
+    nwr(around:${radius},${lat},${lon})[amenity=place_of_worship];
+    nwr(around:${radius},${lat},${lon})[building~"church|cathedral|chapel|castle|palace|monastery"];
+    nwr(around:${radius},${lat},${lon})[man_made=tower];
+    nwr(around:${radius},${lat},${lon})[amenity~"restaurant|cafe|bar|pub"];
+    nwr(around:${radius},${lat},${lon})[shop~"bakery|pastry"];
+    nwr(around:${radius},${lat},${lon})[natural~"bay|beach"];
+    nwr(around:${radius},${lat},${lon})[leisure=beach_resort];
+  );out center tags;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method:'POST', body:'data=' + encodeURIComponent(q),
+    headers:{'Content-Type':'application/x-www-form-urlencoded'}
+  });
+  if(!res.ok) throw new Error('Overpass ' + res.status);
+  return res.json();
+}
+
+function iconForCandidate(tags){
+  if(tags.amenity==='restaurant') return '🍽️';
+  if(tags.amenity==='cafe') return '☕';
+  if(tags.amenity==='bar'||tags.amenity==='pub') return '🍷';
+  if(tags.shop==='bakery'||tags.shop==='pastry') return '🥐';
+  if(tags.natural==='bay'||tags.natural==='beach'||tags.leisure==='beach_resort') return '🏖️';
+  if(tags.amenity==='place_of_worship'||/church|cathedral|chapel|monastery/.test(tags.building||'')) return '⛪';
+  if(/castle|palace/.test(tags.building||'')) return '🏰';
+  if(tags.man_made==='tower') return '🗼';
+  if(tags.historic) return '🏛️';
+  return '📍';
+}
+
+// Friendly German labels for OSM tag values, shown as the "type" before the
+// name (e.g. "Café · Bar do Porto" instead of just the name).
+const KIND_LABELS = {
+  restaurant:'Restaurant', cafe:'Café', bar:'Bar', pub:'Kneipe',
+  bakery:'Bäckerei', pastry:'Konditorei',
+  bay:'Bucht', beach:'Strand', beach_resort:'Strandresort',
+  place_of_worship:'Gotteshaus',
+  church:'Kirche', cathedral:'Kathedrale', chapel:'Kapelle',
+  castle:'Burg/Schloss', palace:'Palast', monastery:'Kloster',
+  tower:'Turm',
+  monument:'Denkmal', memorial:'Gedenkstätte', ruins:'Ruine',
+  archaeological_site:'Ausgrabungsstätte', fort:'Festung', castle_wall:'Burgmauer',
+  attraction:'Sehenswürdigkeit', museum:'Museum', artwork:'Kunstwerk',
+  viewpoint:'Aussichtspunkt', gallery:'Galerie'
+};
+
+function friendlyKind(tags){
+  return KIND_LABELS[tags.historic] || (tags.historic && 'Historische Stätte')
+    || KIND_LABELS[tags.tourism] || KIND_LABELS[tags.amenity] || KIND_LABELS[tags.shop]
+    || KIND_LABELS[tags.natural] || KIND_LABELS[tags.leisure] || KIND_LABELS[tags.building]
+    || KIND_LABELS[tags.man_made] || 'Ort';
+}
+
+function kindLabel(tags){
+  return tags.historic || tags.tourism || tags.amenity || tags.shop || tags.building || tags.man_made || tags.natural || tags.leisure || '';
+}
+
+// Category groups used to order the list — food, nature, then history/sights,
+// with anything unmatched falling into a final catch-all group.
+const CANDIDATE_GROUPS = [
+  { label: 'Essen & Trinken', match: t => ['restaurant','cafe','bar','pub'].includes(t.amenity) || ['bakery','pastry'].includes(t.shop) },
+  { label: 'Natur', match: t => ['bay','beach'].includes(t.natural) || t.leisure==='beach_resort' },
+  { label: 'Historisches & Sehenswürdigkeiten', match: t => !!t.historic || !!t.tourism || t.amenity==='place_of_worship' || /church|cathedral|chapel|castle|palace|monastery/.test(t.building||'') || t.man_made==='tower' },
+];
+
+// Collects multiple named nearby candidates (not just the single nearest one),
+// deduped by name, sorted by distance, capped to a reasonable list length.
+async function collectNearbyCandidates(){
+  const {lat, lon} = state;
+  const seen = new Map();
+  for(const radius of [150, 400, 900]){
+    const data = await overpassCandidatesQuery(radius);
+    for(const el of (data.elements || [])){
+      const tags = el.tags || {};
+      if(!tags.name) continue;
+      const elat = el.lat ?? el.center?.lat;
+      const elon = el.lon ?? el.center?.lon;
+      if(elat==null || elon==null) continue;
+      const d = haversine(lat, lon, elat, elon);
+      if(!seen.has(tags.name) || seen.get(tags.name).d > d){
+        seen.set(tags.name, { name: tags.name, tags, d, icon: iconForCandidate(tags), kind: kindLabel(tags), kindLabel: friendlyKind(tags) });
+      }
+    }
+    if(seen.size >= 6) break; // enough candidates already at a smaller radius, no need to widen further
+  }
+  return [...seen.values()].sort((a,b)=>a.d-b.d).slice(0,8);
+}
+
+async function reverseGeocode(){
+  const {lat, lon} = state;
+  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+  if(!res.ok) throw new Error('Nominatim ' + res.status);
+  return res.json();
+}
+
+// ---------- Wikipedia grounding ----------
+// The model's raw "knowledge" hallucinates confidently on smaller/lesser-known places
+// (confirmed: completely made-up facts about Rösrath). So before asking the model for
+// fun facts, we try to pull a real Wikipedia summary and force the model to only
+// draw from that text. If nothing is found, the model must say so instead of
+// inventing specifics.
+async function wikiSearch(lang, query){
+  try{
+    const url = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=${encodeURIComponent(query)}`;
+    const res = await fetch(url);
+    if(!res.ok) return [];
+    const data = await res.json();
+    return (data.query && data.query.search) || [];
+  }catch(e){ return []; }
+}
+
+async function wikiSummary(lang, title){
+  try{
+    const url = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g,'_'))}`;
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(data.type === 'disambiguation') return null;
+    if(!data.extract || data.extract.length < 40) return null;
+    return data;
+  }catch(e){ return null; }
+}
+
+// The REST "summary" endpoint above only returns the short lead paragraph —
+// nowhere near enough for e.g. a town's actual history. Pull the full article
+// plaintext via the action API instead, and only use the summary for the
+// canonical title/description/URL bits.
+async function wikiFullExtract(lang, title){
+  try{
+    const url = `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&origin=*&redirects=1&titles=${encodeURIComponent(title)}`;
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const pages = data.query && data.query.pages;
+    if(!pages) return null;
+    const page = Object.values(pages)[0];
+    if(!page || page.missing !== undefined || !page.extract) return null;
+    return page.extract;
+  }catch(e){ return null; }
+}
+
+async function fetchWikiContext(name, localityHint){
+  const queries = [];
+  if(localityHint) queries.push(name + ' ' + localityHint.split(',')[0]);
+  queries.push(name);
+  for(const lang of ['de','en']){
+    for(const q of queries){
+      const results = await wikiSearch(lang, q);
+      for(const r of results.slice(0,2)){
+        const summary = await wikiSummary(lang, r.title);
+        if(!summary) continue;
+        const full = await wikiFullExtract(lang, r.title);
+        const extract = full && full.length > summary.extract.length ? full : summary.extract;
+        return {
+          title: summary.title,
+          // Generous cap (~7000 chars ≈ several pages) — enough to cover a
+          // History/Geschichte section, not just the lead paragraph, while
+          // staying well within the model's context window.
+          extract: extract.slice(0, 7000),
+          url: summary.content_urls?.desktop?.page || null,
+          lang
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// ---------- Wikidata: structured facts (dates, population, architect, heritage status...) ----------
+const WIKIDATA_PROPS = {
+  P571: 'Gründungs-/Errichtungsdatum',
+  P576: 'Auflösungsdatum',
+  P17:  'Land',
+  P131: 'Verwaltungseinheit',
+  P1082:'Einwohnerzahl',
+  P84:  'Architekt',
+  P149: 'Baustil',
+  P138: 'Benannt nach',
+  P2044:'Höhe',
+  P1435:'Denkmalschutz-Status',
+  P112: 'Gegründet von',
+  P159: 'Sitz',
+  P206: 'Gewässer in der Nähe',
+};
+
+function formatWikidataDate(t){
+  const m = /^([+-])(\d+)-(\d\d)-(\d\d)/.exec(t);
+  if(!m) return t;
+  const [,,y,mo,d] = m;
+  if(mo==='00' && d==='00') return y;
+  return `${d}.${mo}.${y}`;
+}
+
+async function fetchWikidataFacts(lang, wikiTitle){
+  try{
+    const ppUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&prop=pageprops&titles=${encodeURIComponent(wikiTitle)}&format=json&origin=*&ppprop=wikibase_item`;
+    const ppData = await (await fetch(ppUrl)).json();
+    const page = Object.values(ppData.query?.pages || {})[0];
+    const qid = page?.pageprops?.wikibase_item;
+    if(!qid) return null;
+
+    const entUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&format=json&origin=*&props=claims|descriptions&languages=de|en`;
+    const entData = await (await fetch(entUrl)).json();
+    const entity = entData.entities?.[qid];
+    if(!entity) return null;
+
+    const claims = entity.claims || {};
+    const refIds = new Set();
+    const raw = [];
+    for(const [pid,label] of Object.entries(WIKIDATA_PROPS)){
+      const stmts = claims[pid];
+      if(!stmts || !stmts.length) continue;
+      for(const s of stmts.slice(0,2)){
+        const val = s.mainsnak?.datavalue?.value;
+        if(val == null) continue;
+        if(val.id){ refIds.add(val.id); raw.push({label, ref:val.id}); }
+        else if(val.time){ raw.push({label, text: formatWikidataDate(val.time)}); }
+        else if(val.amount){ raw.push({label, text: String(val.amount).replace('+','')}); }
+        else if(typeof val === 'string'){ raw.push({label, text: val}); }
+      }
+    }
+    let idLabels = {};
+    if(refIds.size){
+      const ids = [...refIds].slice(0,40).join('|');
+      const labData = await (await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids}&format=json&origin=*&props=labels&languages=de|en`)).json();
+      for(const [id,e] of Object.entries(labData.entities || {})){
+        idLabels[id] = e.labels?.de?.value || e.labels?.en?.value || id;
+      }
+    }
+    const lines = raw.map(f => f.ref ? `${f.label}: ${idLabels[f.ref] || f.ref}` : `${f.label}: ${f.text}`);
+    if(!lines.length) return null;
+    return { facts: lines, url: `https://www.wikidata.org/wiki/${qid}` };
+  }catch(e){ return null; }
+}
+
+// ---------- GND via lobid.org: official German authority data (historical names, dates) ----------
+async function fetchGndFacts(name, localityHint){
+  try{
+    const q = localityHint ? `${name} ${localityHint.split(',')[0]}` : name;
+    const url = `https://lobid.org/gnd/search?q=${encodeURIComponent(q)}&format=json&size=1`;
+    const data = await (await fetch(url)).json();
+    const m = data.member?.[0];
+    if(!m) return null;
+    const lines = [];
+    if(m.dateOfEstablishment) lines.push(`Gründungsdatum (GND): ${[].concat(m.dateOfEstablishment).join(', ')}`);
+    if(m.dateOfTermination) lines.push(`Auflösungs-/Enddatum (GND): ${[].concat(m.dateOfTermination).join(', ')}`);
+    if(m.variantName) lines.push(`Historische/alternative Namen (GND): ${[].concat(m.variantName).slice(0,5).join(', ')}`);
+    if(m.definition) lines.push(`Beschreibung (GND): ${[].concat(m.definition).join(' ')}`);
+    if(m.hierarchicalSuperiorOfPlaceOrGeographicName){
+      const parents = [].concat(m.hierarchicalSuperiorOfPlaceOrGeographicName).map(p=>p.label).filter(Boolean);
+      if(parents.length) lines.push(`Übergeordnete Verwaltungseinheit (GND): ${parents.join(', ')}`);
+    }
+    if(!lines.length) return null;
+    return { facts: lines, url: m.id || null };
+  }catch(e){ return null; }
+}
+
+// Combines Wikipedia (full text), Wikidata (structured facts) and GND (official
+// authority data) into one grounding package. Any of the three can be missing —
+// the prompt only claims what's actually present.
+async function fetchGroundingSources(name, localityHint){
+  const wiki = await fetchWikiContext(name, localityHint);
+  const [wikidata, gnd] = await Promise.all([
+    wiki ? fetchWikidataFacts(wiki.lang, wiki.title) : Promise.resolve(null),
+    fetchGndFacts(name, localityHint)
+  ]);
+  if(!wiki && !wikidata && !gnd) return null;
+  return { wiki, wikidata, gnd };
+}
+
+function groundedSystemPrompt(sources){
+  const base = `Du bist ein kenntnisreicher, lebendiger Reisebegleiter für historische Fun Facts. Antworte immer auf Deutsch.
+Stil: modern, lebendig, seriös - keine trockenen Lexikon-Einträge, sondern überraschende, einprägsame Details. Keine
+Emojis, keine nummerierten Listen, keine Überschriften.
+Namen von Gebäuden/Orten sind oft nicht eindeutig — dasselbe Wort kann in mehreren Ländern vorkommen (z.B. gleichnamige
+Gebäude in Portugal und Brasilien). Nutze immer die mitgelieferte Stadt/Land-Angabe, um den richtigen Ort zu identifizieren,
+und beziehe dich NIE auf einen gleichnamigen Ort woanders.
+
+Du hast außerdem Zugriff auf ein Websuche-Tool (web_search). Wikipedia/Wikidata/GND decken nur enzyklopädisch
+relevante Orte/Gebäude ab — für sehr lokale Dinge (ein Restaurant, ein Laden, eine Person mit einer ungewöhnlichen
+Lebensgeschichte, die vor Ort bekannt ist, ein lokales Gerücht/Ereignis) gibt es dort naturgemäß nichts. Nutze die
+Websuche gezielt, wenn der genannte Ort/Name nach einem Geschäft, Restaurant, einer Person oder einem sehr lokalen
+Phänomen klingt und die mitgelieferten Quellen dazu nichts hergeben. Erwähne den Suchvorgang selbst NICHT im Text
+("ich habe gesucht und gefunden..."), liefere nur das Endergebnis im gewohnten Fun-Fact-Stil. Auch bei Websuche gilt:
+nichts erfinden, was die Suchergebnisse nicht hergeben — wenn auch die Websuche nichts Konkretes findet, sag das ehrlich
+statt zu spekulieren.`;
+
+  if(sources && (sources.wiki || sources.wikidata || sources.gnd)){
+    const richness = (sources.wiki ? 1:0) + (sources.wikidata ? 1:0) + (sources.gnd ? 1:0);
+    const lengthGuidance = richness >= 2
+      ? `Dir liegt mehr als eine Quelle mit brauchbarem Material vor. Schöpf das aus: ziel auf ca. 2-3 Minuten Lesezeit
+(ungefähr 400-600 Wörter, mehrere Absätze), wenn das Material das wirklich hergibt — aber fülle NICHT künstlich mit
+Wiederholungen oder Allgemeinplätzen auf, wenn die Quellen dünner sind als das. Qualität und Substanz vor Zielwortzahl.`
+      : `Nur eine Quelle mit Material vorhanden — bleib bei 3-5 prägnanten Fakten, keine künstliche Streckung.`;
+
+    return base + `\n\nKRITISCH — Quellenbindung: Dir liegen unten ein oder mehrere echte Quellen zu genau diesem Ort vor
+(Wikipedia-Volltext, Wikidata-Strukturdaten und/oder GND-Normdaten). Nutze AUSSCHLIESSLICH diese Texte als Faktenquelle
+(in eigenen Worten umformuliert, nicht wörtlich zitiert) — durchsuche den Wikipedia-Text ruhig ganz, nicht nur den ersten
+Absatz, gerade Geschichts-Abschnitte liefern oft die interessantesten Details. Wikidata/GND-Angaben sind gute Anker für
+exakte Daten/Zahlen, die du in die Fließtext-Fakten einbauen kannst. Ergänze höchstens sehr allgemeines, unstrittiges
+Kontextwissen (z.B. grobe Epochen-Einordnung), aber KEINE eigenen spezifischen Details (Jahreszahlen, Namen, Ereignisse),
+die nicht in den Quellen stehen — auch wenn du glaubst, etwas über einen ähnlich klingenden Ort zu wissen.
+${lengthGuidance}
+Ein Fact/Absatz pro Absatz, aber bei längerer Ausgabe dürfen einzelne Absätze auch mal 2-3 Sätze haben statt strikt einer Zeile.`;
+  }
+  return base + `\n\nKRITISCH — keine Quelle vorhanden: Für diesen Ort wurde KEINE Wikipedia-, Wikidata- oder GND-Quelle
+gefunden. Erfinde KEINE spezifischen historischen Fakten (keine Jahreszahlen, Namen, Ereignisse, Anekdoten) über diesen
+konkreten Ort — das ist die Hauptursache für frühere Fantasie-Antworten und darf nicht wieder passieren. Schreibe
+stattdessen ehrlich und knapp (2-3 Sätze), dass zu diesem genauen Ort keine gesicherten Informationen vorliegen. Du
+darfst höchstens ganz allgemeine, unstrittige Kontext-Infos zur Region/Gegend nennen, aber klar als "allgemein"
+kennzeichnen und nicht als Fun Fact über den Ort selbst verkaufen.`;
+}
+
+function buildSourceUserMessage(title, contextText, sources){
+  let msg = `Ort/Bauwerk: "${title}". Zusätzlicher Kontext: ${contextText}`;
+  if(!sources) { msg += `\n\n(Keine Quellen gefunden.)`; return msg; }
+  if(sources.wiki){
+    msg += `\n\n--- Wikipedia-Auszug ("${sources.wiki.title}", ${sources.wiki.lang.toUpperCase()}) ---\n${sources.wiki.extract}`;
+  }
+  if(sources.wikidata){
+    msg += `\n\n--- Wikidata-Fakten ---\n${sources.wikidata.facts.join('\n')}`;
+  }
+  if(sources.gnd){
+    msg += `\n\n--- GND-Normdaten ---\n${sources.gnd.facts.join('\n')}`;
+  }
+  return msg;
+}
+
+function sourceBadge(sources, usedWebSearch){
+  const parts = [];
+  if(sources?.wiki) parts.push('Wikipedia');
+  if(sources?.wikidata) parts.push('Wikidata');
+  if(sources?.gnd) parts.push('GND');
+  if(usedWebSearch) parts.push('Websuche');
+  if(!parts.length) return '⚠️ Keine Quelle gefunden — mit Vorsicht genießen';
+  return `Quellen: ${parts.join(', ')}`;
+}
+
+async function showNearbyChoices(){
+  ensureApiKey(async ()=>{
+    try{
+      setStatus('Suche nach Interessantem in der Nähe…');
+      const candidates = await collectNearbyCandidates();
+      const locality = localityString();
+      state.nearbyList = candidates;
+      state.locality = locality;
+
+      if(!candidates.length){
+        // Nothing named nearby at all — skip the list, go straight to the address fallback.
+        setStatus('Nichts Markantes in der Nähe gefunden — ermittle Adresse…');
+        const addr = state.addressLabel || (await reverseGeocode()).display_name || 'unbekannter Ort';
+        const contextText = `Der Nutzer steht an folgender Adresse (kein spezifisches Baudenkmal in OSM gefunden): ${addr}. Koordinaten: ${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}. Gib Fun Facts zu dieser Gegend/Straße/diesem Viertel, falls möglich, sonst zur nächstgrößeren Stadt. Beziehe dich nur auf diesen konkreten Ort, nicht auf gleichnamige Orte anderswo.`;
+        const title = state.addressDetails?.city || state.addressDetails?.town || state.addressDetails?.village || 'In der Nähe';
+        subline.textContent = title;
+        await generateFacts(contextText, title, locality);
+        return;
+      }
+      renderTopicList();
+    }catch(err){
+      setStatus('Fehler bei der Suche in der Nähe: ' + err.message + '. Versuch es mit Foto oder manueller Eingabe.', false);
+    }
+  });
+}
+
+function renderCandidateRow(c){
+  const cached = state.topicCache[c.name];
+  const distLabel = c.d < 1000 ? `${Math.round(c.d)} m` : `${(c.d/1000).toFixed(1)} km`;
+  return `<div class="topic-row" data-name="${c.name.replace(/"/g,'&quot;')}" style="display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); cursor:pointer;">
+    <span style="font-size:22px;">${c.icon}</span>
+    <div style="flex:1;">
+      <div style="font-size:11px; color:var(--gold2); font-weight:700; text-transform:uppercase; letter-spacing:.4px;">${c.kindLabel}</div>
+      <div style="font-size:14.5px; color:var(--ink);">${c.name}${cached ? ' <span style=\"color:var(--gold2); font-size:11px; text-transform:none; font-weight:400;\">· schon abgefragt</span>' : ''}</div>
+      <div style="font-size:11.5px; color:var(--muted);">${distLabel}</div>
+    </div>
+    <span style="color:var(--muted);">›</span>
+  </div>`;
+}
+
+function renderTopicList(){
+  hideStatus();
+  stopSpeech();
+  const list = state.nearbyList;
+  const groupsHtml = [];
+  const used = new Set();
+
+  for(const group of CANDIDATE_GROUPS){
+    const items = list.filter(c => !used.has(c.name) && group.match(c.tags)).sort((a,b)=>a.d-b.d);
+    if(!items.length) continue;
+    items.forEach(c => used.add(c.name));
+    groupsHtml.push(`<div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:16px 0 2px; padding-left:4px;">${group.label}</div>${items.map(renderCandidateRow).join('')}`);
+  }
+  const rest = list.filter(c => !used.has(c.name)).sort((a,b)=>a.d-b.d);
+  if(rest.length){
+    groupsHtml.push(`<div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:16px 0 2px; padding-left:4px;">Weitere Orte</div>${rest.map(renderCandidateRow).join('')}`);
+  }
+
+  const uncachedCount = list.filter(c => !state.topicCache[c.name]).length;
+  const batchHtml = uncachedCount > 1
+    ? `<button id="batchAllBtn" style="width:100%; background:var(--panel); border:1px solid var(--line); color:var(--gold2); border-radius:10px; padding:11px 14px; font-size:13px; cursor:pointer; margin-top:14px;">⚡ Alle ${uncachedCount} offenen Orte auf einmal recherchieren</button>
+       <div style="font-size:10.5px; color:var(--muted); margin-top:6px; line-height:1.5;">Eine gebündelte Anfrage statt einzelner Klicks — spart Overhead, aber bezahlt auch Orte, die du am Ende nicht anschaust. Bei gezieltem Interesse ist einzeln antippen meist günstiger.</div>`
+    : '';
+
+  main.innerHTML = `
+    <div class="plaque">
+      <div class="eyebrow">In der Nähe</div>
+      <h2>Worüber möchtest du mehr wissen?</h2>
+      <div class="meta">${state.locality || ''}</div>
+      <div style="margin-top:4px;">${groupsHtml.join('')}</div>
+      ${batchHtml}
+    </div>
+  `;
+  main.querySelectorAll('.topic-row').forEach(row=>{
+    row.onclick = ()=> selectTopic(row.getAttribute('data-name'));
+  });
+  if(uncachedCount > 1){
+    $('batchAllBtn').onclick = ()=> batchResearchAll();
+  }
+}
+
+async function batchResearchAll(){
+  const missing = state.nearbyList.filter(c => !state.topicCache[c.name]);
+  if(!missing.length) return;
+  try{
+    setStatus(`Recherchiere ${missing.length} Orte in einer Anfrage…`);
+    const groundings = await Promise.all(missing.map(async c => ({
+      candidate: c,
+      sources: await fetchGroundingSources(c.name, state.locality)
+    })));
+
+    const sys = groundedSystemPrompt({ wiki:true }) + `\n\nDIESES MAL BESONDERS: Du bekommst mehrere Orte auf einmal, jeweils mit eigenen Quellen klar
+abgegrenzt durch "=== ORT N ===". Antworte AUSSCHLIESSLICH mit validem JSON, keine Markdown-Codeblöcke, kein Text davor
+oder danach: ein Array von Objekten, je Ort ein Objekt {"name": "<exakter Name wie angegeben>", "facts": "<Fun-Fact-Text
+im gewohnten Stil, Absätze durch \\n\\n getrennt>"}. Wende die Quellen-/Websuche-Regeln pro Ort unabhängig an — ein Ort
+ohne Quellen bekommt ehrlich den "keine Quelle"-Text, auch wenn andere Orte im selben Batch gute Quellen haben.`;
+
+    let userMsg = 'Hier sind mehrere Orte mit ihren Quellen:\n\n';
+    groundings.forEach((g, i) => {
+      userMsg += `=== ORT ${i+1}: "${g.candidate.name}" (Typ: ${g.candidate.kindLabel}, ~${Math.round(g.candidate.d)}m entfernt, Region: ${state.locality || 'unbekannt'}) ===\n`;
+      userMsg += buildSourceUserMessage(g.candidate.name, `Typ: ${g.candidate.kind}.`, g.sources) + '\n\n';
+    });
+
+    const res = await callGemini(sys, [ { role:'user', parts:[{ text: userMsg }] } ], { maxTokens: 900 * missing.length + 600 });
+    let raw = res.text.trim();
+    raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
+    const entries = JSON.parse(raw);
+
+    entries.forEach(entry => {
+      const g = groundings.find(x => x.candidate.name === entry.name);
+      if(!g || !entry.facts) return;
+      const perSys = groundedSystemPrompt(g.sources);
+      const perUserMsg = buildSourceUserMessage(g.candidate.name, `Typ: ${g.candidate.kind}.`, g.sources);
+      cacheTopic(entry.name, {
+        context: perUserMsg,
+        systemPrompt: perSys + '\nBeantworte Folgefragen des Nutzers dazu im gleichen Stil, streng nach denselben Quellenregeln — nichts erfinden, was nicht in der Quelle steht oder allgemein unstrittig ist. Nutze die Websuche auch hier bei Bedarf für sehr lokale Details.',
+        apiMessages: [ { role:'user', parts:[{ text: perUserMsg }] }, { role:'model', parts:[{ text: entry.facts }] } ],
+        displayLog: [],
+        badge: sourceBadge(g.sources, false),
+        sourceUrl: g.sources?.wiki?.url || g.sources?.wikidata?.url || g.sources?.gnd?.url || null,
+        citations: null,
+        factsText: entry.facts
+      });
+    });
+    renderTopicList();
+  }catch(err){
+    setStatus('Fehler bei der Sammel-Recherche: ' + err.message, false);
+  }
+}
+
+async function selectTopic(name){
+  const candidate = state.nearbyList.find(c => c.name === name);
+  if(!candidate) return;
+
+  const cached = state.topicCache[name];
+  if(cached){
+    // Restore the exact previous conversation instead of re-fetching (saves cost
+    // and lets the user pick up follow-ups on a topic they already explored).
+    state.context = cached.context;
+    state.systemPrompt = cached.systemPrompt;
+    state.messages = cached.apiMessages;
+    state.displayLog = cached.displayLog;
+    state.currentTopic = name;
+    subline.textContent = name;
+    renderPlaque(name, cached.factsText, cached.badge, cached.sourceUrl, cached.citations, true);
+    (cached.displayLog || []).forEach(m => appendChatMsg(m.role, m.text));
+    enableChat();
+    return;
+  }
+
+  const t = candidate.tags;
+  const locality = state.locality;
+  let contextText = `Ort/Bauwerk: "${candidate.name}". Typ: ${candidate.kind}. Entfernung: ~${Math.round(candidate.d)}m vom Nutzer.`;
+  contextText += ` WICHTIG — genauer Standort laut GPS: ${locality || (state.lat.toFixed(5)+', '+state.lon.toFixed(5))}. Beziehe dich ausschließlich auf das Bauwerk/den Ort mit diesem Namen an genau diesem Ort — falls der Name auch anderswo auf der Welt existiert, ignoriere das und sag im Zweifel lieber, dass du zu diesem konkreten Ort nicht genug weißt, statt Fakten über den falschen Ort zu geben.`;
+  if(t['name:etymology']) contextText += ` Namensherkunft-Hinweis: ${t['name:etymology']}.`;
+  if(t.start_date) contextText += ` Baujahr/Datum laut OSM: ${t.start_date}.`;
+  subline.textContent = candidate.name;
+  await generateFacts(contextText, candidate.name, locality);
+}
+
+function localityString(){
+  const a = state.addressDetails;
+  if(!a) return null;
+  const parts = [a.suburb, a.city || a.town || a.village, a.state, a.country].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+
+async function loadFactsForQuery(q){
+  setStatus('Hole Fun Facts zu "' + q + '"…');
+  subline.textContent = q;
+  await generateFacts(`Ort/Bauwerk (vom Nutzer manuell eingegeben): "${q}".`, q, localityString());
+}
+
+function fileToDataURL(file){
+  return new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=> res(r.result);
+    r.onerror = ()=> rej(new Error('Foto konnte nicht gelesen werden'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function loadFactsFromPhoto(file){
+  try{
+    setStatus('Foto wird analysiert…');
+    const dataUrl = await fileToDataURL(file);
+    const [meta, base64] = dataUrl.split(',');
+    const mimeType = /data:(.*);base64/.exec(meta)?.[1] || 'image/jpeg';
+    const res = await callGemini(
+      'Identifiziere kurz und präzise, was auf dem Foto zu sehen ist: der Eigenname des Gebäudes/Ortes falls erkennbar, sonst eine kurze Beschreibung der Art (z.B. "gotische Dorfkirche", "Fachwerkhaus"). Antworte NUR mit diesem einen kurzen Satz auf Deutsch, ohne weitere Fakten, ohne Geschichte, ohne Spekulation.',
+      [ { role:'user', parts:[
+          { text:'Was ist auf diesem Foto zu sehen?' },
+          { inline_data:{ mime_type: mimeType, data: base64 } }
+      ]} ],
+      { maxTokens: 200, useSearch:false }
+    );
+    const identification = res.text.trim();
+    subline.textContent = identification.slice(0,60);
+    // Now run the same grounded pipeline as GPS/manual search — this is what
+    // stops the vision model from just inventing history straight from the photo.
+    await generateFacts(
+      `Ort/Bauwerk wurde per Foto erkannt: "${identification}".`,
+      identification,
+      localityString()
+    );
+  }catch(err){
+    setStatus('Fehler bei der Fotoanalyse: ' + err.message, false);
+  }
+}
+
+async function generateFacts(contextText, title, localityHint){
+  try{
+    setStatus('Suche nach verlässlichen Quellen (Wikipedia, Wikidata, GND)…');
+    const sources = await fetchGroundingSources(title, localityHint);
+    const sys = groundedSystemPrompt(sources);
+    const userMsg = buildSourceUserMessage(title, contextText, sources);
+
+    setStatus('Fun Facts werden geschrieben…');
+    const { text, citations, usedSearch } = await callGemini(sys, [ { role:'user', parts:[{ text: userMsg }] } ]);
+    const badge = sourceBadge(sources, usedSearch);
+    const sourceUrl = sources?.wiki?.url || sources?.wikidata?.url || sources?.gnd?.url || null;
+    renderPlaque(title, text, badge, sourceUrl, citations, !!state.nearbyList);
+    state.context = contextText;
+    state.systemPrompt = sys + '\nBeantworte Folgefragen des Nutzers dazu im gleichen Stil, streng nach denselben Quellenregeln — nichts erfinden, was nicht in der Quelle steht oder allgemein unstrittig ist. Nutze die Websuche auch hier bei Bedarf für sehr lokale Details.';
+    state.messages = [
+      { role:'user', parts:[{ text: userMsg }] },
+      { role:'model', parts:[{ text: text }] }
+    ];
+    state.displayLog = [];
+    state.currentTopic = title;
+    cacheTopic(title, {
+      context: contextText,
+      systemPrompt: state.systemPrompt,
+      apiMessages: state.messages,
+      displayLog: state.displayLog,
+      badge, sourceUrl, citations,
+      factsText: text
+    });
+    enableChat();
+  }catch(err){
+    setStatus('Fehler beim Abrufen der Fun Facts: ' + err.message, false);
+  }
+}
+
+function factsToHtml(text){
+  return text.split(/\n+/).filter(p=>p.trim()).map(p=>`<p>${p.trim()}</p>`).join('');
+}
+
+// ---------- Read-aloud (Web Speech API, built into the browser, no API cost) ----------
+let currentSpeakBtn = null;
+
+function pickGermanVoice(){
+  const voices = window.speechSynthesis.getVoices();
+  return voices.find(v => v.lang && v.lang.startsWith('de')) || null;
+}
+
+function resetSpeakBtn(btn){
+  if(btn){ btn.textContent = '🔊'; btn.setAttribute('aria-label','Vorlesen'); }
+}
+
+function toggleSpeak(text, btn){
+  if(!('speechSynthesis' in window)){
+    btn.textContent = '⚠️';
+    return;
+  }
+  const isThisSpeaking = window.speechSynthesis.speaking && currentSpeakBtn === btn;
+  window.speechSynthesis.cancel(); // stop whatever else might be playing
+  if(currentSpeakBtn) resetSpeakBtn(currentSpeakBtn);
+  if(isThisSpeaking){
+    currentSpeakBtn = null;
+    return;
+  }
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'de-DE';
+  const voice = pickGermanVoice();
+  if(voice) utter.voice = voice;
+  utter.onend = ()=>{ resetSpeakBtn(btn); currentSpeakBtn = null; };
+  utter.onerror = ()=>{ resetSpeakBtn(btn); currentSpeakBtn = null; };
+  window.speechSynthesis.speak(utter);
+  btn.textContent = '⏹️';
+  currentSpeakBtn = btn;
+}
+
+function stopSpeech(){
+  if('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if(currentSpeakBtn) resetSpeakBtn(currentSpeakBtn);
+  currentSpeakBtn = null;
+}
+
+function renderPlaque(title, text, eyebrow, sourceUrl, citations, showBackButton){
+  hideStatus();
+  stopSpeech(); // never keep reading a topic we're navigating away from
+  const citationsHtml = (citations && citations.length)
+    ? `<div class="meta" style="margin-top:12px;">Websuche-Quellen: ${citations.map(c=>`<a href="${c.url}" target="_blank" rel="noopener" style="color:var(--gold2);">${(c.title||c.url).slice(0,40)}</a>`).join(' · ')}</div>`
+    : '';
+  const backHtml = (showBackButton && state.nearbyList)
+    ? `<button id="backToList" style="width:100%; background:var(--panel); border:1.5px solid var(--gold2); color:var(--gold2); border-radius:10px; padding:13px 16px; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:12px;">‹ Andere Orte in der Nähe</button>`
+    : '';
+  main.innerHTML = `
+    ${backHtml}
+    <div class="plaque">
+      <div class="eyebrow">${eyebrow}${sourceUrl ? ` · <a href="${sourceUrl}" target="_blank" rel="noopener" style="color:var(--gold2);">Quelle ansehen</a>` : ''}</div>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+        <h2 style="margin:0;">${title}</h2>
+        <button id="speakMain" title="Vorlesen" style="flex:none; background:var(--panel); border:1px solid var(--line); color:var(--gold2); border-radius:8px; width:36px; height:36px; font-size:16px; cursor:pointer;">🔊</button>
+      </div>
+      <div class="meta">${new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+      <div class="facts">${factsToHtml(text)}</div>
+      ${citationsHtml}
+    </div>
+    <div class="chat" id="chatLog"></div>
+  `;
+  $('speakMain').onclick = ()=> toggleSpeak(text, $('speakMain'));
+  if(showBackButton && state.nearbyList){
+    $('backToList').onclick = ()=> renderTopicList();
+  }
+}
+
+function enableChat(){
+  askInput.disabled = false;
+  sendBtn.disabled = false;
+  askInput.focus();
+}
+
+function appendChatMsg(role, text){
+  let log = $('chatLog');
+  if(!log){
+    main.insertAdjacentHTML('beforeend', '<div class="chat" id="chatLog"></div>');
+    log = $('chatLog');
+  }
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role==='user' ? 'user' : 'assistant');
+  if(role === 'assistant'){
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+    const speakBtn = document.createElement('button');
+    speakBtn.textContent = '🔊';
+    speakBtn.title = 'Vorlesen';
+    speakBtn.style.cssText = 'background:none; border:none; color:var(--gold2); cursor:pointer; font-size:13px; margin-left:8px; vertical-align:middle;';
+    speakBtn.onclick = ()=> toggleSpeak(text, speakBtn);
+    div.appendChild(textSpan);
+    div.appendChild(speakBtn);
+  } else {
+    div.textContent = text;
+  }
+  log.appendChild(div);
+  main.scrollTop = main.scrollHeight;
+}
+
+async function sendFollowUp(){
+  const q = askInput.value.trim();
+  if(!q || !state.apiKey) return;
+  askInput.value = '';
+  sendBtn.disabled = true;
+  appendChatMsg('user', q);
+  state.messages.push({role:'user', parts:[{ text:q }]});
+  state.displayLog.push({role:'user', text:q});
+  try{
+    const { text: answer } = await callGemini(state.systemPrompt, state.messages);
+    state.messages.push({role:'model', parts:[{ text:answer }]});
+    state.displayLog.push({role:'assistant', text:answer});
+    appendChatMsg('assistant', answer);
+  }catch(err){
+    appendChatMsg('assistant', 'Fehler: ' + err.message);
+  }finally{
+    sendBtn.disabled = false;
+    if(state.currentTopic && state.topicCache[state.currentTopic]){
+      state.topicCache[state.currentTopic].apiMessages = state.messages;
+      state.topicCache[state.currentTopic].displayLog = state.displayLog;
+      savePersistedCache();
+    }
+  }
+}
+
+sendBtn.onclick = sendFollowUp;
+askInput.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendFollowUp(); }
+});
+askInput.addEventListener('input', ()=>{
+  askInput.style.height='auto';
+  askInput.style.height = Math.min(askInput.scrollHeight,100)+'px';
+});
+
+// ---------- Boot ----------
+main.innerHTML = `<div class="status" id="statusBox"><div class="spinner"></div><span id="statusText">Standort wird ermittelt…</span></div>`;
+if(!state.apiKey){
+  openSettings();
+  setStatus('Bitte zuerst Gemini API-Key eintragen (⚙ oben rechts).', false);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
