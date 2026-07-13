@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.2.0</title>
+<title>Fundfakten Gemini v0.3.0</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.2.0</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.0</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -721,7 +721,8 @@ und beziehe dich NIE auf einen gleichnamigen Ort woanders.
 
 Du hast außerdem Zugriff auf ein Websuche-Tool (google_search). Nutze es aktiv — nicht nur als Notlösung, wenn die
 mitgelieferten Quellen leer sind, sondern IMMER zusätzlich, um über die reine Enzyklopädie-Fassung hinauszugehen:
-aktuelle Presseartikel, lokale Blogs, Bewertungsportale, Interviews, ungewöhnliche Geschichten, Kuriositäten, lokale
+aktuelle Presseartikel, lokale Blogs, Bewertungsportale (Google Reviews, Tripadvisor, Facebook-Seiten und deren
+Rezensionen/Kommentare, Instagram), Interviews, ungewöhnliche Geschichten, Kuriositäten, lokale
 Reputation. Führe dafür mindestens eine gezielte Suche durch, auch wenn dir schon Wikipedia/Wikidata/GND-Text vorliegt
 — die gelieferten Quellen sind der verlässliche Ausgangspunkt, nicht die Obergrenze dessen, was du einbauen darfst.
 Erwähne den Suchvorgang selbst NICHT im Text ("ich habe gesucht und gefunden..."), liefere nur das Endergebnis im
@@ -915,22 +916,6 @@ async function selectTopic(name){
   const candidate = state.nearbyList.find(c => c.name === name);
   if(!candidate) return;
 
-  const cached = state.topicCache[name];
-  if(cached){
-    // Restore the exact previous conversation instead of re-fetching (saves cost
-    // and lets the user pick up follow-ups on a topic they already explored).
-    state.context = cached.context;
-    state.systemPrompt = cached.systemPrompt;
-    state.messages = cached.apiMessages;
-    state.displayLog = cached.displayLog;
-    state.currentTopic = name;
-    subline.textContent = name;
-    renderPlaque(name, cached.factsText, cached.badge, cached.sourceUrl, cached.citations, true);
-    (cached.displayLog || []).forEach(m => appendChatMsg(m.role, m.text));
-    enableChat();
-    return;
-  }
-
   const t = candidate.tags;
   const locality = state.locality;
   let contextText = `Ort/Bauwerk: "${candidate.name}". Typ: ${candidate.kind}. Entfernung: ~${Math.round(candidate.d)}m vom Nutzer.`;
@@ -938,6 +923,24 @@ async function selectTopic(name){
   if(t['name:etymology']) contextText += ` Namensherkunft-Hinweis: ${t['name:etymology']}.`;
   if(t.start_date) contextText += ` Baujahr/Datum laut OSM: ${t.start_date}.`;
   subline.textContent = candidate.name;
+  state.regenerateFn = () => generateFacts(contextText, candidate.name, locality);
+
+  const cached = state.topicCache[name];
+  if(cached){
+    // Restore the exact previous conversation instead of re-fetching (saves cost
+    // and lets the user pick up follow-ups on a topic they already explored).
+    // The "Neu abrufen" button (regenerateFn, set above) can still force a fresh fetch.
+    state.context = cached.context;
+    state.systemPrompt = cached.systemPrompt;
+    state.messages = cached.apiMessages;
+    state.displayLog = cached.displayLog;
+    state.currentTopic = name;
+    renderPlaque(name, cached.factsText, cached.badge, cached.sourceUrl, cached.citations, true);
+    (cached.displayLog || []).forEach(m => appendChatMsg(m.role, m.text));
+    enableChat();
+    return;
+  }
+
   await generateFacts(contextText, candidate.name, locality);
 }
 
@@ -993,6 +996,7 @@ async function loadFactsFromPhoto(file){
 
 async function generateFacts(contextText, title, localityHint){
   try{
+    state.regenerateFn = () => generateFacts(contextText, title, localityHint);
     setStatus('Suche nach verlässlichen Quellen (Wikipedia, Wikidata, GND)…');
     const sources = await fetchGroundingSources(title, localityHint);
     const sys = groundedSystemPrompt(sources);
@@ -1085,7 +1089,10 @@ function renderPlaque(title, text, eyebrow, sourceUrl, citations, showBackButton
       <div class="eyebrow">${eyebrow}${sourceUrl ? ` · <a href="${sourceUrl}" target="_blank" rel="noopener" style="color:var(--gold2);">Quelle ansehen</a>` : ''}</div>
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
         <h2 style="margin:0;">${title}</h2>
-        <button id="speakMain" title="Vorlesen" style="flex:none; background:var(--panel); border:1px solid var(--line); color:var(--gold2); border-radius:8px; width:36px; height:36px; font-size:16px; cursor:pointer;">🔊</button>
+        <div style="display:flex; gap:6px; flex:none;">
+          <button id="regenMain" title="Neu abrufen (überschreibt den Cache)" style="background:var(--panel); border:1px solid var(--line); color:var(--gold2); border-radius:8px; width:36px; height:36px; font-size:15px; cursor:pointer;">🔄</button>
+          <button id="speakMain" title="Vorlesen" style="background:var(--panel); border:1px solid var(--line); color:var(--gold2); border-radius:8px; width:36px; height:36px; font-size:16px; cursor:pointer;">🔊</button>
+        </div>
       </div>
       <div class="meta">${new Date().toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
       <div class="facts">${factsToHtml(text)}</div>
@@ -1094,6 +1101,7 @@ function renderPlaque(title, text, eyebrow, sourceUrl, citations, showBackButton
     <div class="chat" id="chatLog"></div>
   `;
   $('speakMain').onclick = ()=> toggleSpeak(text, $('speakMain'));
+  $('regenMain').onclick = ()=> { if(state.regenerateFn) state.regenerateFn(); };
   if(showBackButton && state.nearbyList){
     $('backToList').onclick = ()=> renderTopicList();
   }
