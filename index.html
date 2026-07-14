@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.4.0</title>
+<title>Fundfakten Gemini v0.6.0</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -51,6 +51,21 @@
     border-top-color:var(--gold); animation:spin 0.9s linear infinite; flex:none;
   }
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* radar-style progress indicator for the nearby-search phase */
+  .radar-pulse{
+    width:16px; height:16px; border-radius:50%; background:var(--gold);
+    position:relative; flex:none;
+  }
+  .radar-pulse::before{
+    content:''; position:absolute; inset:-8px; border-radius:50%;
+    border:2px solid var(--gold); opacity:0.7;
+    animation: radarPing 1.6s ease-out infinite;
+  }
+  @keyframes radarPing{
+    0%{ transform:scale(0.5); opacity:0.8; }
+    100%{ transform:scale(2.6); opacity:0; }
+  }
 
   /* the plaque card */
   .plaque{
@@ -138,7 +153,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.4.0</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.6.0</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -391,6 +406,36 @@ async function confirmLocation(acc){
   renderLocationCheck(label, acc);
 }
 
+function renderScanChoice(){
+  hideStatus();
+  stopSpeech();
+  main.innerHTML = `
+    <div class="plaque">
+      <div class="eyebrow">Standort bestätigt</div>
+      <h2>Wie möchtest du suchen?</h2>
+      <div class="meta">${state.addressLabel ? state.addressLabel.split(',').slice(0,2).join(',') : ''}</div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+        <button id="scanPhoto" style="display:flex; align-items:center; gap:14px; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:16px; cursor:pointer; color:var(--ink);">
+          <span style="font-size:26px;">📷</span>
+          <span>
+            <span style="display:block; font-size:15px; font-weight:600; color:var(--gold2);">Foto-Scan</span>
+            <span style="display:block; font-size:12px; color:var(--muted); margin-top:2px;">Foto von Gebäude/Statue/Schild machen — KI identifiziert es direkt</span>
+          </span>
+        </button>
+        <button id="scanInternet" style="display:flex; align-items:center; gap:14px; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:16px; cursor:pointer; color:var(--ink);">
+          <span style="font-size:26px;">🌐</span>
+          <span>
+            <span style="display:block; font-size:15px; font-weight:600; color:var(--gold2);">Internet-Scan</span>
+            <span style="display:block; font-size:12px; color:var(--muted); margin-top:2px;">Kartendaten durchsuchen — Liste interessanter Orte in der Nähe</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  `;
+  $('scanPhoto').onclick = ()=> ensureApiKey(()=> $('fileInput').click());
+  $('scanInternet').onclick = ()=> showNearbyChoices();
+}
+
 function renderLocationCheck(label, acc){
   hideStatus();
   stopSpeech();
@@ -406,7 +451,7 @@ function renderLocationCheck(label, acc){
       </div>
     </div>
   `;
-  $('locOk').onclick = ()=> showNearbyChoices();
+  $('locOk').onclick = ()=> renderScanChoice();
   $('locWrong').onclick = ()=>{ $('manualInput').value=''; $('searchOverlay').classList.add('show'); $('manualInput').focus(); };
 }
 
@@ -427,34 +472,46 @@ const OVERPASS_ENDPOINTS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-async function fetchWithTimeout(url, options, timeoutMs){
+function prettyEndpointName(url){
+  try{ return new URL(url).hostname; }catch(e){ return url; }
+}
+
+async function fetchWithTimeout(url, options, timeoutMs, externalSignal){
   const controller = new AbortController();
   const timer = setTimeout(()=> controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  if(externalSignal){
+    if(externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort);
+  }
   try{
     return await fetch(url, { ...options, signal: controller.signal });
   }finally{
     clearTimeout(timer);
+    if(externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
   }
 }
 
-async function overpassFetch(query){
+async function overpassFetch(query, onProgress, signal){
   let lastErr;
   for(const endpoint of OVERPASS_ENDPOINTS){
+    if(signal?.aborted) throw new Error('Abgebrochen');
+    onProgress && onProgress({ text: `Frage Kartendaten ab (${prettyEndpointName(endpoint)})…` });
     try{
       const res = await fetchWithTimeout(endpoint, {
         method:'POST', body:'data=' + encodeURIComponent(query),
         headers:{'Content-Type':'application/x-www-form-urlencoded'}
-      }, 8000); // 8s — a hanging/overloaded server must not block the whole flow
+      }, 8000, signal); // 8s — a hanging/overloaded server must not block the whole flow
       if(res.ok) return res.json();
       lastErr = new Error('Overpass ' + res.status + ' (' + endpoint + ')');
     }catch(e){
-      lastErr = e.name === 'AbortError' ? new Error('Zeitüberschreitung (' + endpoint + ')') : e;
+      lastErr = e.name === 'AbortError' ? new Error('Zeitüberschreitung/abgebrochen (' + endpoint + ')') : e;
     }
   }
   throw lastErr;
 }
 
-async function overpassCandidatesQuery(radius){
+async function overpassCandidatesQuery(radius, onProgress, signal){
   const {lat, lon} = state;
   const q = `[out:json][timeout:20];(
     nwr(around:${radius},${lat},${lon})[historic];
@@ -467,7 +524,7 @@ async function overpassCandidatesQuery(radius){
     nwr(around:${radius},${lat},${lon})[natural~"bay|beach"];
     nwr(around:${radius},${lat},${lon})[leisure=beach_resort];
   );out center tags;`;
-  return overpassFetch(q);
+  return overpassFetch(q, onProgress, signal);
 }
 
 function iconForCandidate(tags){
@@ -520,12 +577,19 @@ const CANDIDATE_GROUPS = [
 
 // Collects multiple named nearby candidates (not just the single nearest one),
 // deduped by name, sorted by distance, capped to a reasonable list length.
-async function collectNearbyCandidates(){
+async function collectNearbyCandidates(onProgress, signal){
   const {lat, lon} = state;
   const seen = new Map();
   for(const radius of [150, 400, 900]){
-    setStatus(`Suche nach Interessantem in der Nähe (Radius ${radius}m)…`);
-    const data = await overpassCandidatesQuery(radius);
+    if(signal?.aborted) break;
+    onProgress && onProgress({ text: `Suche im Umkreis von ${radius}m…`, count: seen.size });
+    let data;
+    try{
+      data = await overpassCandidatesQuery(radius, onProgress, signal);
+    }catch(e){
+      if(signal?.aborted) break;
+      continue; // this radius failed entirely (all mirrors down) — try the next radius anyway
+    }
     for(const el of (data.elements || [])){
       const tags = el.tags || {};
       if(!tags.name) continue;
@@ -537,6 +601,7 @@ async function collectNearbyCandidates(){
         seen.set(tags.name, { name: tags.name, tags, d, icon: iconForCandidate(tags), kind: kindLabel(tags), kindLabel: friendlyKind(tags) });
       }
     }
+    onProgress && onProgress({ text: `Umkreis ${radius}m durchsucht`, count: seen.size });
     if(seen.size >= 6) break; // enough candidates already at a smaller radius, no need to widen further
   }
   return [...seen.values()].sort((a,b)=>a.d-b.d).slice(0,8);
@@ -799,13 +864,38 @@ function sourceBadge(sources, usedWebSearch){
   return `Quellen: ${parts.join(', ')}`;
 }
 
+function renderSearchProgress(text, count){
+  main.innerHTML = `
+    <div class="status" style="flex-direction:column; align-items:stretch; gap:14px;">
+      <div style="display:flex; align-items:center; gap:14px;">
+        <div class="radar-pulse"></div>
+        <div style="flex:1;">
+          <div style="font-size:14px; color:var(--ink);">${text}</div>
+          <div style="font-size:12px; color:var(--gold2); margin-top:2px;">${count} Ort${count===1?'':'e'} gefunden</div>
+        </div>
+      </div>
+      <button id="cancelSearchBtn" style="align-self:flex-start; background:none; border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:8px 14px; font-size:12.5px; cursor:pointer;">Suche abbrechen &amp; bisherige Ergebnisse zeigen</button>
+    </div>
+  `;
+  $('cancelSearchBtn').onclick = ()=>{
+    state.searchAbortController?.abort();
+    $('cancelSearchBtn').textContent = 'Wird abgebrochen…';
+    $('cancelSearchBtn').disabled = true;
+  };
+}
+
 async function showNearbyChoices(){
   ensureApiKey(async ()=>{
     let candidates = [];
     let overpassFailed = false;
+    state.searchAbortController = new AbortController();
+    const signal = state.searchAbortController.signal;
     try{
-      setStatus('Suche nach Interessantem in der Nähe…');
-      candidates = await collectNearbyCandidates();
+      renderSearchProgress('Suche startet…', 0);
+      candidates = await collectNearbyCandidates(
+        (p)=> renderSearchProgress(p.text, p.count ?? candidates.length),
+        signal
+      );
     }catch(err){
       overpassFailed = true; // all Overpass mirrors unreachable — fall through to address-based facts instead of a dead end
     }
