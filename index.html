@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.3.3</title>
+<title>Fundfakten Gemini v0.4.0</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -138,7 +138,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.3.3</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.4.0</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -998,22 +998,33 @@ async function loadFactsFromPhoto(file){
     const dataUrl = await fileToDataURL(file);
     const [meta, base64] = dataUrl.split(',');
     const mimeType = /data:(.*);base64/.exec(meta)?.[1] || 'image/jpeg';
+
+    const locality = localityString();
+    let locationContext = 'Kein GPS-Standort verfügbar.';
+    if(state.lat != null && state.lon != null){
+      locationContext = `Das Foto wurde hier aufgenommen: ${locality || (state.lat.toFixed(5) + ', ' + state.lon.toFixed(5))} (GPS: ${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}).`;
+      if(state.nearbyList && state.nearbyList.length){
+        const names = state.nearbyList.map(c => `${c.name} (${c.kindLabel})`).join(', ');
+        locationContext += ` Bekannte benannte Orte in der unmittelbaren Nähe laut Kartendaten: ${names}. Falls das Foto zu einem dieser Orte passt, nutze GENAU diesen Namen — das ist zuverlässiger als eine freie Vermutung.`;
+      }
+    }
+
     const res = await callGemini(
-      'Identifiziere kurz und präzise, was auf dem Foto zu sehen ist: der Eigenname des Gebäudes/Ortes falls erkennbar, sonst eine kurze Beschreibung der Art (z.B. "gotische Dorfkirche", "Fachwerkhaus"). Antworte NUR mit diesem einen kurzen Satz auf Deutsch, ohne weitere Fakten, ohne Geschichte, ohne Spekulation.',
+      `Identifiziere kurz und präzise, was auf dem Foto zu sehen ist: der Eigenname des Gebäudes/Ortes falls erkennbar, sonst eine kurze Beschreibung der Art (z.B. "gotische Dorfkirche", "Fachwerkhaus"). ${locationContext} Gleiche das Bild mit diesem Standort ab, statt das Foto isoliert zu betrachten — bei einem generischen Motiv (z.B. eine unbeschriftete Statue) nutze die Websuche mit Bildbeschreibung + Standort, um den exakten Namen zu finden. Antworte NUR mit diesem einen kurzen Satz auf Deutsch, ohne weitere Fakten, ohne Geschichte, ohne Spekulation.`,
       [ { role:'user', parts:[
-          { text:'Was ist auf diesem Foto zu sehen?' },
+          { text:'Was ist auf diesem Foto zu sehen, an genau diesem Standort?' },
           { inline_data:{ mime_type: mimeType, data: base64 } }
       ]} ],
-      { maxTokens: 200, useSearch:false }
+      { maxTokens: 300, useSearch:true }
     );
     const identification = res.text.trim();
     subline.textContent = identification.slice(0,60);
     // Now run the same grounded pipeline as GPS/manual search — this is what
     // stops the vision model from just inventing history straight from the photo.
     await generateFacts(
-      `Ort/Bauwerk wurde per Foto erkannt: "${identification}".`,
+      `Ort/Bauwerk wurde per Foto erkannt (unter Einbezug des GPS-Standorts): "${identification}".`,
       identification,
-      localityString()
+      locality
     );
   }catch(err){
     setStatus('Fehler bei der Fotoanalyse: ' + err.message, false);
