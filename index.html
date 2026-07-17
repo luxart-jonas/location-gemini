@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Fundfakten Gemini v0.7.0</title>
+<title>Fundfakten Gemini v0.8.0</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -153,7 +153,7 @@
 
 <header>
   <div>
-    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.7.0</span></h1>
+    <h1>Fundfakten <span style="color:var(--gold2);">Gemini</span> <span style="font-size:11px;color:var(--muted);font-family:var(--sans);vertical-align:middle;">v0.8.0</span></h1>
     <div class="sub" id="subline">Wird geladen…</div>
   </div>
   <button class="gear" id="settingsBtn">⚙</button>
@@ -214,10 +214,14 @@ let state = {
   systemPrompt: '',      // system instruction for the current topic's conversation
   messages: [],          // {role:'user'|'model', parts:[{text}]} for ongoing chat (Gemini's role naming)
   displayLog: [],         // {role,text} of real follow-up Q&A shown in the chat UI (excludes internal context message)
-  nearbyList: null,       // candidates from the last GPS lookup, so "back to list" doesn't re-query
+  nearbyList: null,       // candidates from the last category search, so "back to list" doesn't re-query
   locality: null,
   currentTopic: null,     // name of the topic currently open, used to keep topicCache in sync
   topicCache: {},         // name -> {context, systemPrompt, apiMessages, displayLog, badge, sourceUrl, citations, factsText, ts}
+  currentCategory: null,  // id of the category currently shown in the topic list
+  generalActive: false,   // whether a quick-question (non-topic) chat screen is currently open
+  generalMessages: [],    // {role,parts} history for the quick-question chat
+  lastMenuRender: null,   // fn to call to go "back" from a quick-question screen to whatever menu was open
 };
 
 // ---------- Persistent cache (7-day TTL) ----------
@@ -291,7 +295,7 @@ const $ = id => document.getElementById(id);
 const main = $('main'), subline = $('subline');
 const askInput = $('askInput'), sendBtn = $('sendBtn');
 
-// IMPORTANT: main.innerHTML gets fully replaced by renderPlaque()/renderLocationCheck().
+// IMPORTANT: main.innerHTML gets fully replaced by renderPlaque()/renderCategoryMenu()/etc.
 // setStatus/hideStatus must never cache references to nodes inside #main from a
 // previous render — those become detached and invisible. Always rebuild fresh.
 function setStatus(text, spinning=true){
@@ -300,7 +304,7 @@ function setStatus(text, spinning=true){
     <span id="statusText">${text}</span>
   </div>`;
 }
-function hideStatus(){ /* renderPlaque/renderLocationCheck overwrite main directly, nothing to do */ }
+function hideStatus(){ /* other render functions overwrite main directly, nothing to do */ }
 
 function ensureApiKey(cb){
   if(state.apiKey){ cb(); return; }
@@ -391,30 +395,43 @@ function init(){
 async function confirmLocation(acc){
   subline.textContent = `${state.lat.toFixed(5)}, ${state.lon.toFixed(5)} (±${acc}m)`;
   setStatus('Standort gefunden (±' + acc + 'm) — prüfe Adresse…');
-  let label = null;
   try{
     const geo = await reverseGeocode();
-    label = geo.display_name || null;
-    state.addressLabel = label;
+    state.addressLabel = geo.display_name || null;
     state.addressDetails = geo.address || null;
   }catch(e){ /* ignore, we can still proceed on coords alone */ }
 
-  // Always show the confirmation screen. WiFi/IP-based geolocation on laptops
-  // can report a deceptively small accuracy value while still being hundreds
-  // or thousands of km off (stale AP database entries), so accuracy alone
-  // can't be trusted as a signal to skip confirmation.
-  renderLocationCheck(label, acc);
+  // No extra "is this correct?" confirmation step — GPS is trusted as-is.
+  // A manual-entry escape hatch stays one tap away on the category menu for
+  // the rare case it's actually wrong.
+  renderCategoryMenu();
 }
 
-function renderScanChoice(){
+function renderCategoryMenu(){
   hideStatus();
   stopSpeech();
+  state.currentTopic = null;
+  state.nearbyList = null;
+  state.currentCategory = null;
+  state.generalActive = false;
+  state.lastMenuRender = renderCategoryMenu;
+  const metaLabel = state.addressLabel
+    ? state.addressLabel.split(',').slice(0,2).join(',')
+    : (state.lat != null ? `${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}` : '');
   main.innerHTML = `
     <div class="plaque">
-      <div class="eyebrow">Standort bestätigt</div>
-      <h2>Wie möchtest du suchen?</h2>
-      <div class="meta">${state.addressLabel ? state.addressLabel.split(',').slice(0,2).join(',') : ''}</div>
+      <div class="eyebrow">Standort erkannt</div>
+      <h2>Worüber möchtest du mehr wissen?</h2>
+      <div class="meta">${metaLabel}</div>
       <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+        ${CATEGORIES.map(cat => `
+        <button class="catBtn" data-cat="${cat.id}" style="display:flex; align-items:center; gap:14px; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:16px; cursor:pointer; color:var(--ink);">
+          <span style="font-size:26px;">${cat.icon}</span>
+          <span>
+            <span style="display:block; font-size:15px; font-weight:600; color:var(--gold2);">${cat.label}</span>
+            <span style="display:block; font-size:12px; color:var(--muted); margin-top:2px;">${cat.desc}</span>
+          </span>
+        </button>`).join('')}
         <button id="scanPhoto" style="display:flex; align-items:center; gap:14px; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:16px; cursor:pointer; color:var(--ink);">
           <span style="font-size:26px;">📷</span>
           <span>
@@ -422,37 +439,14 @@ function renderScanChoice(){
             <span style="display:block; font-size:12px; color:var(--muted); margin-top:2px;">Foto von Gebäude/Statue/Schild machen — KI identifiziert es direkt</span>
           </span>
         </button>
-        <button id="scanInternet" style="display:flex; align-items:center; gap:14px; text-align:left; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:16px; cursor:pointer; color:var(--ink);">
-          <span style="font-size:26px;">🌐</span>
-          <span>
-            <span style="display:block; font-size:15px; font-weight:600; color:var(--gold2);">Internet-Scan</span>
-            <span style="display:block; font-size:12px; color:var(--muted); margin-top:2px;">Kartendaten durchsuchen — Liste interessanter Orte in der Nähe</span>
-          </span>
-        </button>
       </div>
+      <button id="locWrongLink" style="width:100%; background:none; border:1px solid var(--line); color:var(--muted); padding:10px 14px; border-radius:8px; cursor:pointer; font-size:12.5px; margin-top:14px;">Falscher Standort? Manuell eingeben</button>
     </div>
   `;
+  main.querySelectorAll('.catBtn').forEach(btn => btn.onclick = ()=> startCategorySearch(btn.getAttribute('data-cat')));
   $('scanPhoto').onclick = ()=> ensureApiKey(()=> $('fileInput').click());
-  $('scanInternet').onclick = ()=> showNearbyChoices();
-}
-
-function renderLocationCheck(label, acc){
-  hideStatus();
-  stopSpeech();
-  main.innerHTML = `
-    <div class="plaque">
-      <div class="eyebrow">Standort prüfen</div>
-      <h2>Ist das richtig?</h2>
-      <div class="meta">Genauigkeit nur ±${acc}m — auf Laptops ohne GPS (WLAN-Ortung) manchmal stark daneben.</div>
-      <div class="facts"><p>${label ? label : 'Koordinaten: ' + state.lat.toFixed(5) + ', ' + state.lon.toFixed(5)}</p></div>
-      <div class="row" style="display:flex;gap:8px;margin-top:14px;">
-        <button class="secondary" id="locWrong" style="flex:1;background:none;border:1px solid var(--line);color:var(--muted);padding:11px 16px;border-radius:8px;cursor:pointer;">Falsch — manuell eingeben</button>
-        <button class="primary" id="locOk" style="flex:1;background:var(--gold);border:none;color:#141311;padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;">Passt, weiter</button>
-      </div>
-    </div>
-  `;
-  $('locOk').onclick = ()=> renderScanChoice();
-  $('locWrong').onclick = ()=>{ $('manualInput').value=''; $('searchOverlay').classList.add('show'); $('manualInput').focus(); };
+  $('locWrongLink').onclick = ()=>{ $('manualInput').value=''; $('searchOverlay').classList.add('show'); $('manualInput').focus(); };
+  enableChat(false);
 }
 
 function haversine(lat1,lon1,lat2,lon2){
@@ -511,28 +505,16 @@ async function overpassFetch(query, onProgress, signal){
   throw lastErr;
 }
 
-async function overpassCandidatesQuery(radius, onProgress, signal){
-  const {lat, lon} = state;
-  const q = `[out:json][timeout:20];(
-    nwr(around:${radius},${lat},${lon})[historic];
-    nwr(around:${radius},${lat},${lon})[tourism~"attraction|museum|artwork|viewpoint|gallery"];
-    nwr(around:${radius},${lat},${lon})[amenity=place_of_worship];
-    nwr(around:${radius},${lat},${lon})[building~"church|cathedral|chapel|castle|palace|monastery"];
-    nwr(around:${radius},${lat},${lon})[man_made=tower];
-    nwr(around:${radius},${lat},${lon})[amenity~"restaurant|cafe|bar|pub"];
-    nwr(around:${radius},${lat},${lon})[shop~"bakery|pastry"];
-    nwr(around:${radius},${lat},${lon})[natural~"bay|beach"];
-    nwr(around:${radius},${lat},${lon})[leisure=beach_resort];
-  );out center tags;`;
-  return overpassFetch(q, onProgress, signal);
-}
-
 function iconForCandidate(tags){
   if(tags.amenity==='restaurant') return '🍽️';
   if(tags.amenity==='cafe') return '☕';
   if(tags.amenity==='bar'||tags.amenity==='pub') return '🍷';
   if(tags.shop==='bakery'||tags.shop==='pastry') return '🥐';
   if(tags.natural==='bay'||tags.natural==='beach'||tags.leisure==='beach_resort') return '🏖️';
+  if(tags.natural==='peak'||tags.natural==='volcano') return '⛰️';
+  if(tags.aeroway) return '✈️';
+  if(tags.amenity==='ferry_terminal'||tags.landuse==='harbour'||tags.leisure==='marina') return '⛴️';
+  if(tags.tourism==='museum') return '🏛️';
   if(tags.amenity==='place_of_worship'||/church|cathedral|chapel|monastery/.test(tags.building||'')) return '⛪';
   if(/castle|palace/.test(tags.building||'')) return '🏰';
   if(tags.man_made==='tower') return '🗼';
@@ -546,46 +528,94 @@ const KIND_LABELS = {
   restaurant:'Restaurant', cafe:'Café', bar:'Bar', pub:'Kneipe',
   bakery:'Bäckerei', pastry:'Konditorei',
   bay:'Bucht', beach:'Strand', beach_resort:'Strandresort',
+  peak:'Gipfel', volcano:'Vulkan',
   place_of_worship:'Gotteshaus',
   church:'Kirche', cathedral:'Kathedrale', chapel:'Kapelle',
   castle:'Burg/Schloss', palace:'Palast', monastery:'Kloster',
-  tower:'Turm',
+  tower:'Turm', townhall:'Rathaus',
   monument:'Denkmal', memorial:'Gedenkstätte', ruins:'Ruine',
   archaeological_site:'Ausgrabungsstätte', fort:'Festung', castle_wall:'Burgmauer',
   attraction:'Sehenswürdigkeit', museum:'Museum', artwork:'Kunstwerk',
-  viewpoint:'Aussichtspunkt', gallery:'Galerie'
+  viewpoint:'Aussichtspunkt', gallery:'Galerie',
+  aerodrome:'Flughafen', terminal:'Flughafen-Terminal',
+  ferry_terminal:'Fährterminal', harbour:'Hafen', marina:'Marina'
 };
 
 function friendlyKind(tags){
   return KIND_LABELS[tags.historic] || (tags.historic && 'Historische Stätte')
     || KIND_LABELS[tags.tourism] || KIND_LABELS[tags.amenity] || KIND_LABELS[tags.shop]
     || KIND_LABELS[tags.natural] || KIND_LABELS[tags.leisure] || KIND_LABELS[tags.building]
-    || KIND_LABELS[tags.man_made] || 'Ort';
+    || KIND_LABELS[tags.man_made] || KIND_LABELS[tags.aeroway] || KIND_LABELS[tags.landuse]
+    || 'Ort';
 }
 
 function kindLabel(tags){
-  return tags.historic || tags.tourism || tags.amenity || tags.shop || tags.building || tags.man_made || tags.natural || tags.leisure || '';
+  return tags.historic || tags.tourism || tags.amenity || tags.shop || tags.building || tags.man_made
+    || tags.natural || tags.leisure || tags.aeroway || tags.landuse || '';
 }
 
-// Category groups used to order the list — food, nature, then history/sights,
-// with anything unmatched falling into a final catch-all group.
-const CANDIDATE_GROUPS = [
-  { label: 'Essen & Trinken', match: t => ['restaurant','cafe','bar','pub'].includes(t.amenity) || ['bakery','pastry'].includes(t.shop) },
-  { label: 'Natur', match: t => ['bay','beach'].includes(t.natural) || t.leisure==='beach_resort' },
-  { label: 'Historisches & Sehenswürdigkeiten', match: t => !!t.historic || !!t.tourism || t.amenity==='place_of_worship' || /church|cathedral|chapel|castle|palace|monastery/.test(t.building||'') || t.man_made==='tower' },
+// ---------- Categories for the selection menu ----------
+// Each category runs its own targeted Overpass query, widening the radius
+// step by step until it has a handful of named hits (airports/harbours/
+// viewpoints are often further away than restaurants, hence bigger radii).
+const CATEGORIES = [
+  { id:'allgemein', label:'Allgemein', icon:'📍',
+    desc:'Flughafen, Hafen, Museum & Co. — Infos zu diesem Ort',
+    radii:[500, 1500, 4000, 10000],
+    overpassTags:[
+      'nwr(around:RADIUS,LAT,LON)[aeroway~"aerodrome|terminal"];',
+      'nwr(around:RADIUS,LAT,LON)[amenity=ferry_terminal];',
+      'nwr(around:RADIUS,LAT,LON)[leisure=marina];',
+      'nwr(around:RADIUS,LAT,LON)[landuse=harbour];',
+      'nwr(around:RADIUS,LAT,LON)[tourism=museum];',
+      'nwr(around:RADIUS,LAT,LON)[amenity=townhall];',
+    ]},
+  { id:'essen', label:'Essen & Trinken', icon:'🍽️',
+    desc:'Restaurants, Cafés, Bars in der Nähe',
+    radii:[200, 500, 1200],
+    overpassTags:[
+      'nwr(around:RADIUS,LAT,LON)[amenity~"restaurant|cafe|bar|pub"];',
+      'nwr(around:RADIUS,LAT,LON)[shop~"bakery|pastry"];',
+    ]},
+  { id:'historisch', label:'Historisches', icon:'🏛️',
+    desc:'Geschichte, Bauwerke, Denkmäler',
+    radii:[300, 800, 2000, 5000],
+    overpassTags:[
+      'nwr(around:RADIUS,LAT,LON)[historic];',
+      'nwr(around:RADIUS,LAT,LON)[amenity=place_of_worship];',
+      'nwr(around:RADIUS,LAT,LON)[building~"church|cathedral|chapel|castle|palace|monastery"];',
+      'nwr(around:RADIUS,LAT,LON)[man_made=tower];',
+    ]},
+  { id:'mustsee', label:'Must-See', icon:'✨',
+    desc:'Sehenswürdigkeiten, Aussichtspunkte, Kunst',
+    radii:[300, 1000, 3000, 8000],
+    overpassTags:[
+      'nwr(around:RADIUS,LAT,LON)[tourism~"attraction|viewpoint|gallery|artwork"];',
+    ]},
+  { id:'natur', label:'Natur', icon:'🌊',
+    desc:'Strände, Buchten, Vulkane, Landschaft',
+    radii:[300, 1000, 3000, 8000],
+    overpassTags:[
+      'nwr(around:RADIUS,LAT,LON)[natural~"bay|beach|peak|volcano"];',
+      'nwr(around:RADIUS,LAT,LON)[leisure=beach_resort];',
+    ]},
 ];
 
-// Collects multiple named nearby candidates (not just the single nearest one),
-// deduped by name, sorted by distance, capped to a reasonable list length.
-async function collectNearbyCandidates(onProgress, signal){
+// Collects multiple named nearby candidates for ONE category, deduped by
+// name, sorted by distance. Widens the radius step by step until it finds
+// a handful of hits or runs out of radii to try.
+async function collectCategoryCandidates(cat, onProgress, signal){
   const {lat, lon} = state;
   const seen = new Map();
-  for(const radius of [150, 400, 900]){
+  for(const radius of cat.radii){
     if(signal?.aborted) break;
-    onProgress && onProgress({ text: `Suche im Umkreis von ${radius}m…`, count: seen.size });
+    const radiusLabel = radius < 1000 ? radius + 'm' : (radius/1000) + 'km';
+    onProgress && onProgress({ text: `Suche im Umkreis von ${radiusLabel}…`, count: seen.size });
+    const tagsQ = cat.overpassTags.map(t => t.replace(/RADIUS/g, radius).replace(/LAT/g, lat).replace(/LON/g, lon)).join('');
+    const q = `[out:json][timeout:20];(${tagsQ});out center tags;`;
     let data;
     try{
-      data = await overpassCandidatesQuery(radius, onProgress, signal);
+      data = await overpassFetch(q, onProgress, signal);
     }catch(e){
       if(signal?.aborted) break;
       continue; // this radius failed entirely (all mirrors down) — try the next radius anyway
@@ -601,8 +631,8 @@ async function collectNearbyCandidates(onProgress, signal){
         seen.set(tags.name, { name: tags.name, tags, d, icon: iconForCandidate(tags), kind: kindLabel(tags), kindLabel: friendlyKind(tags) });
       }
     }
-    onProgress && onProgress({ text: `Umkreis ${radius}m durchsucht`, count: seen.size });
-    if(seen.size >= 6) break; // enough candidates already at a smaller radius, no need to widen further
+    onProgress && onProgress({ text: `Umkreis ${radiusLabel} durchsucht`, count: seen.size });
+    if(seen.size >= 4) break; // enough candidates already, no need to widen further
   }
   return [...seen.values()].sort((a,b)=>a.d-b.d).slice(0,8);
 }
@@ -662,8 +692,19 @@ async function wikiFullExtract(lang, title){
 
 async function fetchWikiContext(name, localityHint){
   const queries = [];
-  if(localityHint) queries.push(name + ' ' + localityHint.split(',')[0]);
-  queries.push(name);
+  if(localityHint){
+    // Try the two most specific locality components as separate query
+    // qualifiers (e.g. suburb, then city) instead of ever searching the bare
+    // name alone — a bare-name search is how unrelated same-named places
+    // elsewhere in the world (wrong country, wrong continent) end up cited.
+    const comps = localityHint.split(',').map(s=>s.trim()).filter(Boolean);
+    if(comps[0]) queries.push(name + ' ' + comps[0]);
+    if(comps[1] && comps[1] !== comps[0]) queries.push(name + ' ' + comps[1]);
+  } else {
+    // Genuinely no location info at all (should be rare now) — only then
+    // fall back to a bare name search.
+    queries.push(name);
+  }
   for(const lang of ['de','en']){
     for(const q of queries){
       const results = await wikiSearch(lang, q);
@@ -791,6 +832,10 @@ async function fetchGroundingSources(name, localityHint){
 
 function groundedSystemPrompt(sources){
   const base = `Du bist ein sachlicher, gut informierter Ortskundiger für historische und aktuelle Fakten. Antworte immer auf Deutsch.
+WICHTIGSTER GRUNDSATZ: Ein ehrliches "Das weiß ich nicht sicher" oder "Dazu finde ich nichts Verlässliches" ist IMMER
+besser als eine erfundene, plausibel klingende Antwort. Errate niemals Namen, Jahreszahlen oder Fakten nur weil sie zum
+Ort zu passen scheinen — wenn weder die mitgelieferten Quellen noch die Websuche etwas Konkretes hergeben, sag das offen
+und knapp, statt zu phantasieren.
 Stil: nüchtern, präzise, informativ — wie jemand, der einem Freund ehrliche Fakten mitteilt, NICHT wie ein Reiseprospekt
 oder eine Restaurantkritik-Werbung. Vermeide explizit: Verkaufsvokabular ("Institution", "Muss man gesehen haben",
 "Perle", "versteckte Perle", "zauberhaft", "einzigartig", "unverzichtbar"), dramatisierte Gegensatzpaare wie "Spannungsfeld
@@ -854,6 +899,26 @@ Was du per Suche findest, muss echt sein (kein Erfinden von Jahreszahlen, Namen,
 aktiv aus, bevor du das Fehlen von Wikipedia mit dem Fehlen von Information verwechselst.`;
 }
 
+// ---------- Quick-question ("Direkte Frage") system prompt ----------
+// Used for the free-text question box that's available right after the
+// location is known, independent of any selected place/category. Anchors
+// every answer to the exact current location and known nearby named places
+// so that e.g. "der Flughafen" resolves to the real nearby airport instead
+// of a same-named place elsewhere in the world.
+function buildGeneralSystemPrompt(){
+  const loc = state.addressLabel || (state.lat != null ? `Koordinaten ${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}` : 'Standort unbekannt');
+  let knownPlaces = '';
+  if(state.nearbyList && state.nearbyList.length){
+    const names = state.nearbyList.map(c => `${c.name} (${c.kindLabel})`).join(', ');
+    knownPlaces = `\n\nBekannte benannte Orte in der unmittelbaren Nähe laut Kartendaten: ${names}. Falls sich eine Frage erkennbar auf einen dieser Orte bezieht (z.B. "der Flughafen", "der Hafen", "das Museum"), beziehe dich GENAU auf diesen konkret benannten, lokalen Ort — niemals auf einen gleichnamigen Ort irgendwo anders auf der Welt.`;
+  }
+  return `Du bist ein hilfreicher, sachlicher lokaler Assistent für unterwegs. Der Nutzer befindet sich JETZT GENAU HIER: ${loc}. Antworte immer auf Deutsch, kurz und direkt — das ist ein schneller Zwischen-Check unterwegs, kein langer Fun-Fact-Text.
+
+Beantworte sowohl praktische als auch wissenswerte Fragen zu diesem Standort (z.B. "Wo ist der nächste Taxistand", "Gibt es hier einen Geldautomaten", "Wie heißt der Flughafen hier", "Hat das Museum heute offen"). Nutze aktiv die Websuche (google_search) für aktuelle und lokale Informationen. Gehe IMMER von genau diesem Standort aus, nie von einem gleichnamigen Ort woanders auf der Welt — bei Mehrdeutigkeit des Namens hat der Ort in unmittelbarer Nähe des Nutzers immer Vorrang.${knownPlaces}
+
+WICHTIGSTER GRUNDSATZ: Es ist IMMER besser, ehrlich "Das weiß ich nicht sicher" oder "Dazu finde ich nichts Verlässliches" zu sagen, als etwas zu erfinden oder zu raten. Erfinde niemals Adressen, Namen, Öffnungszeiten oder Entfernungen — wenn die Websuche nichts Konkretes liefert, sag das offen statt zu phantasieren.`;
+}
+
 function buildSourceUserMessage(title, contextText, sources){
   let msg = `Ort/Bauwerk: "${title}". Zusätzlicher Kontext: ${contextText}`;
   if(!sources) { msg += `\n\n(Keine Quellen gefunden.)`; return msg; }
@@ -899,43 +964,27 @@ function renderSearchProgress(text, count){
   };
 }
 
-async function showNearbyChoices(){
+async function startCategorySearch(catId){
   ensureApiKey(async ()=>{
-    let candidates = [];
-    let overpassFailed = false;
+    const cat = CATEGORIES.find(c => c.id === catId);
+    if(!cat) return;
+    state.currentCategory = catId;
+    if(!state.locality) state.locality = localityString();
     state.searchAbortController = new AbortController();
     const signal = state.searchAbortController.signal;
+    let candidates = [];
     try{
-      renderSearchProgress('Suche startet…', 0);
-      candidates = await collectNearbyCandidates(
+      renderSearchProgress(`Suche „${cat.label}" in der Nähe…`, 0);
+      candidates = await collectCategoryCandidates(
+        cat,
         (p)=> renderSearchProgress(p.text, p.count ?? candidates.length),
         signal
       );
     }catch(err){
-      overpassFailed = true; // all Overpass mirrors unreachable — fall through to address-based facts instead of a dead end
+      // fall through with whatever we found (possibly nothing) rather than a dead end
     }
-
-    try{
-      const locality = localityString();
-      state.nearbyList = candidates;
-      state.locality = locality;
-
-      if(!candidates.length){
-        // Nothing named nearby at all (or Overpass itself unreachable) — skip the list, go straight to the address fallback.
-        setStatus(overpassFailed
-          ? 'Kartendaten gerade nicht erreichbar — ermittle Adresse als Alternative…'
-          : 'Nichts Markantes in der Nähe gefunden — ermittle Adresse…');
-        const addr = state.addressLabel || (await reverseGeocode()).display_name || 'unbekannter Ort';
-        const contextText = `Der Nutzer steht an folgender Adresse (kein spezifisches Baudenkmal in OSM gefunden): ${addr}. Koordinaten: ${state.lat.toFixed(5)}, ${state.lon.toFixed(5)}. Gib Fun Facts zu dieser Gegend/Straße/diesem Viertel, falls möglich, sonst zur nächstgrößeren Stadt. Beziehe dich nur auf diesen konkreten Ort, nicht auf gleichnamige Orte anderswo.`;
-        const title = state.addressDetails?.city || state.addressDetails?.town || state.addressDetails?.village || 'In der Nähe';
-        subline.textContent = title;
-        await generateFacts(contextText, title, locality);
-        return;
-      }
-      renderTopicList();
-    }catch(err){
-      setStatus('Fehler bei der Suche in der Nähe: ' + err.message + '. Versuch es mit Foto oder manueller Eingabe.', false);
-    }
+    state.nearbyList = candidates;
+    renderTopicList();
   });
 }
 
@@ -956,20 +1005,15 @@ function renderCandidateRow(c){
 function renderTopicList(){
   hideStatus();
   stopSpeech();
-  const list = state.nearbyList;
-  const groupsHtml = [];
-  const used = new Set();
+  state.currentTopic = null;
+  state.generalActive = false;
+  state.lastMenuRender = renderTopicList;
+  const cat = CATEGORIES.find(c => c.id === state.currentCategory);
+  const list = (state.nearbyList || []).slice().sort((a,b)=>a.d-b.d);
 
-  for(const group of CANDIDATE_GROUPS){
-    const items = list.filter(c => !used.has(c.name) && group.match(c.tags)).sort((a,b)=>a.d-b.d);
-    if(!items.length) continue;
-    items.forEach(c => used.add(c.name));
-    groupsHtml.push(`<div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:16px 0 2px; padding-left:4px;">${group.label}</div>${items.map(renderCandidateRow).join('')}`);
-  }
-  const rest = list.filter(c => !used.has(c.name)).sort((a,b)=>a.d-b.d);
-  if(rest.length){
-    groupsHtml.push(`<div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin:16px 0 2px; padding-left:4px;">Weitere Orte</div>${rest.map(renderCandidateRow).join('')}`);
-  }
+  const rowsHtml = list.length
+    ? list.map(renderCandidateRow).join('')
+    : `<div class="empty"><b>Nichts gefunden</b>In dieser Kategorie wurde in der Nähe nichts Benanntes gefunden. Versuch eine andere Kategorie, das Foto-Scan oder die manuelle Eingabe.</div>`;
 
   const uncachedCount = list.filter(c => !state.topicCache[c.name]).length;
   const batchHtml = uncachedCount > 1
@@ -978,20 +1022,23 @@ function renderTopicList(){
     : '';
 
   main.innerHTML = `
+    <button id="backToCategories" style="width:100%; background:var(--panel); border:1.5px solid var(--gold2); color:var(--gold2); border-radius:10px; padding:13px 16px; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:12px;">‹ Andere Kategorie</button>
     <div class="plaque">
-      <div class="eyebrow">In der Nähe</div>
-      <h2>Worüber möchtest du mehr wissen?</h2>
+      <div class="eyebrow">${cat ? cat.label : 'In der Nähe'}</div>
+      <h2>Was interessiert dich?</h2>
       <div class="meta">${state.locality || ''}</div>
-      <div style="margin-top:4px;">${groupsHtml.join('')}</div>
+      <div style="margin-top:4px;">${rowsHtml}</div>
       ${batchHtml}
     </div>
   `;
+  $('backToCategories').onclick = ()=> renderCategoryMenu();
   main.querySelectorAll('.topic-row').forEach(row=>{
     row.onclick = ()=> selectTopic(row.getAttribute('data-name'));
   });
   if(uncachedCount > 1){
     $('batchAllBtn').onclick = ()=> batchResearchAll();
   }
+  enableChat(false);
 }
 
 async function batchResearchAll(){
@@ -1077,9 +1124,19 @@ async function selectTopic(name){
 
 function localityString(){
   const a = state.addressDetails;
-  if(!a) return null;
-  const parts = [a.suburb, a.city || a.town || a.village, a.state, a.country].filter(Boolean);
-  return parts.length ? parts.join(', ') : null;
+  if(a){
+    const parts = [a.suburb, a.city || a.town || a.village || a.municipality || a.county, a.state, a.country].filter(Boolean);
+    if(parts.length) return parts.join(', ');
+  }
+  // Sparse/rural addresses (small islands, remote spots) often have no
+  // suburb/city/village fields at all — fall back to the raw address label
+  // or, as a last resort, the coordinates themselves, rather than null.
+  // Losing locality here is exactly what causes name collisions with
+  // same-named places elsewhere in the world (e.g. "Flughafen" matching
+  // Kabul instead of the actual nearby airport).
+  if(state.addressLabel) return state.addressLabel.split(',').slice(-4).map(s=>s.trim()).join(', ');
+  if(state.lat != null && state.lon != null) return `${state.lat.toFixed(3)}, ${state.lon.toFixed(3)}`;
+  return null;
 }
 
 async function loadFactsForQuery(q){
@@ -1249,10 +1306,29 @@ function renderPlaque(title, text, eyebrow, sourceUrl, citations, showBackButton
   }
 }
 
-function enableChat(){
+function enableChat(focus=true){
   askInput.disabled = false;
   sendBtn.disabled = false;
-  askInput.focus();
+  askInput.placeholder = state.currentTopic ? 'Frag nach mehr…' : 'Frag z. B. „Wo ist der nächste Taxistand?"…';
+  if(focus) askInput.focus();
+}
+
+// The screen shown for a "quick question" that isn't tied to any selected
+// place/category — reachable from anywhere once the location is known.
+function renderGeneralAnswerScreen(){
+  hideStatus();
+  stopSpeech();
+  const backTarget = state.lastMenuRender || renderCategoryMenu;
+  main.innerHTML = `
+    <button id="backToMenu" style="width:100%; background:var(--panel); border:1.5px solid var(--gold2); color:var(--gold2); border-radius:10px; padding:13px 16px; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:12px;">‹ Zurück</button>
+    <div class="plaque">
+      <div class="eyebrow">Direkte Frage</div>
+      <h2>Schnelle Antwort</h2>
+      <div class="meta">${state.addressLabel ? state.addressLabel.split(',').slice(0,2).join(',') : ''}</div>
+    </div>
+    <div class="chat" id="chatLog"></div>
+  `;
+  $('backToMenu').onclick = ()=>{ state.generalActive = false; backTarget(); };
 }
 
 function appendChatMsg(role, text){
@@ -1284,24 +1360,42 @@ async function sendFollowUp(){
   const q = askInput.value.trim();
   if(!q || !state.apiKey) return;
   askInput.value = '';
+  askInput.style.height = 'auto';
   sendBtn.disabled = true;
-  appendChatMsg('user', q);
-  state.messages.push({role:'user', parts:[{ text:q }]});
-  state.displayLog.push({role:'user', text:q});
   try{
-    const { text: answer } = await callGemini(state.systemPrompt, state.messages);
-    state.messages.push({role:'model', parts:[{ text:answer }]});
-    state.displayLog.push({role:'assistant', text:answer});
-    appendChatMsg('assistant', answer);
+    if(state.currentTopic){
+      // Continuing the conversation about a specific, already-open place.
+      appendChatMsg('user', q);
+      state.messages.push({role:'user', parts:[{ text:q }]});
+      state.displayLog.push({role:'user', text:q});
+      const { text: answer } = await callGemini(state.systemPrompt, state.messages);
+      state.messages.push({role:'model', parts:[{ text:answer }]});
+      state.displayLog.push({role:'assistant', text:answer});
+      appendChatMsg('assistant', answer);
+      if(state.topicCache[state.currentTopic]){
+        state.topicCache[state.currentTopic].apiMessages = state.messages;
+        state.topicCache[state.currentTopic].displayLog = state.displayLog;
+        savePersistedCache();
+      }
+    } else {
+      // A standalone quick question, not tied to any selected place — answer
+      // it grounded in the current GPS location instead.
+      if(!state.generalActive){
+        state.generalActive = true;
+        state.generalMessages = [];
+        renderGeneralAnswerScreen();
+      }
+      appendChatMsg('user', q);
+      state.generalMessages.push({role:'user', parts:[{ text:q }]});
+      const sys = buildGeneralSystemPrompt();
+      const { text: answer } = await callGemini(sys, state.generalMessages);
+      state.generalMessages.push({role:'model', parts:[{ text:answer }]});
+      appendChatMsg('assistant', answer);
+    }
   }catch(err){
     appendChatMsg('assistant', 'Fehler: ' + err.message);
   }finally{
     sendBtn.disabled = false;
-    if(state.currentTopic && state.topicCache[state.currentTopic]){
-      state.topicCache[state.currentTopic].apiMessages = state.messages;
-      state.topicCache[state.currentTopic].displayLog = state.displayLog;
-      savePersistedCache();
-    }
   }
 }
 
